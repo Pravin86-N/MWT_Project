@@ -1,0 +1,67 @@
+:root {
+    --primary-color: #4CAF50; /* Green */
+    --secondary-color: #FF9800; /* Orange */
+    --accent-color: #2196F3; /* Blue */
+    --background-color: #F5F5F5; /* Light Gray */
+    --text-color: #212121; /* Dark Gray */
+    --header-background: #FFFFFF; /* White */
+    --card-background: #FFFFFF; /* White */
+    --button-background: #4CAF50; /* Green */
+    --button-hover-background: #388E3C; /* Darker Green */
+    --border-radius: 8px;
+    --box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+body {
+    background-color: var(--background-color);
+    color: var(--text-color);
+    font-family: 'Roboto', sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+header {
+    background-color: var(--header-background);
+    box-shadow: var(--box-shadow);
+    padding: 16px;
+}
+
+.card {
+    background-color: var(--card-background);
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
+    padding: 16px;
+    margin: 16px 0;
+}
+
+.button {
+    background-color: var(--button-background);
+    border: none;
+    border-radius: var(--border-radius);
+    color: white;
+    cursor: pointer;
+    padding: 10px 20px;
+    transition: background-color 0.3s ease;
+}
+
+.button:hover {
+    background-color: var(--button-hover-background);
+}
+
+.status-badge {
+    border-radius: var(--border-radius);
+    padding: 4px 8px;
+    color: white;
+}
+
+.status-badge.success {
+    background-color: var(--primary-color);
+}
+
+.status-badge.warning {
+    background-color: var(--secondary-color);
+}
+
+.status-badge.error {
+    background-color: #F44336; /* Red */
+}

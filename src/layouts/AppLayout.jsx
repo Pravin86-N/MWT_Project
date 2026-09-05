@@ -17,6 +17,17 @@ import Navbar from "../components/Navbar";
  */
 export default function AppLayout() {
   const [now, setNow] = useState(new Date());
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    return localStorage.getItem("fdms-sidebar-collapsed") === "true";
+  });
+
+  const toggleSidebar = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("fdms-sidebar-collapsed", String(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -24,8 +35,8 @@ export default function AppLayout() {
   }, []);
 
   return (
-    <div className="shell">
-      <Sidebar />
+    <div className={`shell ${isCollapsed ? "collapsed" : ""}`}>
+      <Sidebar isCollapsed={isCollapsed} toggleSidebar={toggleSidebar} />
       <div className="shell-main">
         <Navbar now={now} />
         <main className="shell-content">

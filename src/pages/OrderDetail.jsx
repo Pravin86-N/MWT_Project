@@ -1,19 +1,12 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { ArrowLeft, Trash2, Check, Fuel as FuelIcon } from "lucide-react";
+import { ArrowLeft, Trash2, Check, Fuel as FuelIcon, FileText, X } from "lucide-react";
 import { fuelOf, computeTotal, STATUS_FLOW, DELIVERY_CHARGE } from "../data/seed";
 import { useOrders } from "../context/OrdersContext";
 import { useLanguage } from "../context/LanguageContext";
 import StatusPill from "../components/StatusPill";
+import InvoiceModal from "../components/InvoiceModal";
 
-/**
- * PURPOSE OF useParams HERE:
- * The URL /orders/:id carries which order to show. useParams reads
- * that segment straight out of the current route match, which is
- * how react-router hands data from the URL to a component — the
- * alternative (a global "selectedOrderId" in context) would make
- * the page impossible to link to or bookmark directly.
- */
 export default function OrderDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -24,10 +17,8 @@ export default function OrderDetail() {
 
   const [driver, setDriver] = useState(order?.driver || "");
   const [vehicle, setVehicle] = useState(order?.vehicle || "");
+  const [showInvoice, setShowInvoice] = useState(false);
 
-  // useEffect: keep the local edit fields in sync if the underlying
-  // order changes (e.g. status advanced) without clobbering it on
-  // every keystroke — only re-syncs when the order identity swaps.
   useEffect(() => {
     setDriver(order?.driver || "");
     setVehicle(order?.vehicle || "");
@@ -47,6 +38,7 @@ export default function OrderDetail() {
   const fuel = fuelOf(order.fuelCode);
   const totals = computeTotal(order.fuelCode, order.qty);
   const done = order.status === "Delivered" || order.status === "Cancelled";
+  const isPending = order.status === "Pending";
   const currentStepIndex = STATUS_FLOW.indexOf(order.status);
 
   const saveAssignment = (e) => {
@@ -72,7 +64,12 @@ export default function OrderDetail() {
           <h1 className="mono">{order.orderNumber}</h1>
           <p className="page-sub">{order.customer} · {order.city}</p>
         </div>
-        <StatusPill status={order.status} />
+        <div className="page-head-actions">
+          <button className="btn-secondary" onClick={() => setShowInvoice(true)}>
+            <FileText size={16} /> Tax Receipt & Invoice
+          </button>
+          <StatusPill status={order.status} />
+        </div>
       </div>
 
       <div className="detail-grid">
@@ -101,12 +98,25 @@ export default function OrderDetail() {
           </form>
 
           <div className="row-actions" style={{ marginTop: 6 }}>
-            <button className="btn-primary" disabled={done} onClick={() => advanceStatus(order.id)}>
-              <Check size={14} /> {t("advance")}
-            </button>
-            <button className="btn-ghost danger" disabled={done} onClick={() => cancelOrder(order.id)}>
-              {t("cancel")}
-            </button>
+            {isPending ? (
+              <>
+                <button className="btn-primary" onClick={() => advanceStatus(order.id)}>
+                  <Check size={14} /> Accept Order
+                </button>
+                <button className="btn-ghost danger" onClick={() => cancelOrder(order.id)}>
+                  <X size={14} /> Reject Order
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="btn-primary" disabled={done} onClick={() => advanceStatus(order.id)}>
+                  <Check size={14} /> {t("advance")}
+                </button>
+                <button className="btn-ghost danger" disabled={done} onClick={() => cancelOrder(order.id)}>
+                  {t("cancel")}
+                </button>
+              </>
+            )}
             <button className="btn-ghost danger" onClick={handleDelete}>
               <Trash2 size={14} /> {t("delete")}
             </button>
@@ -141,6 +151,8 @@ export default function OrderDetail() {
           </ol>
         </section>
       </div>
+
+      {showInvoice && <InvoiceModal order={order} onClose={() => setShowInvoice(false)} />}
     </div>
   );
 }

@@ -2,8 +2,10 @@
 // from the Fuel Delivery Management System data dictionary.
 
 export const USERS = [
-  { email: "priya@fdms.com", password: "depot123", name: "Priya Raman", role: "Depot Manager" },
+  { email: "pravin@123", password: "pravin123", name: "Pravin Raman", role: "Depot Manager" },
   { email: "admin@fdms.com", password: "admin123", name: "Arun Ventures", role: "Admin" },
+  { email: "customer@fdms.com", password: "customer123", name: "Chennai Steel Works", role: "Customer", site: "Factory Site #1", city: "Chennai", creditLimit: 500000, creditUsed: 146200 },
+  { email: "hospital@fdms.com", password: "hospital123", name: "Om Sri Hospital", role: "Customer", site: "Hospital Generator Vault", city: "Madurai", creditLimit: 300000, creditUsed: 52400 },
 ];
 
 export const FUEL_TYPES = [
@@ -16,7 +18,8 @@ export const FUEL_TYPES = [
 export const STATUS_FLOW = ["Pending", "Approved", "Dispatched", "InTransit", "Delivered"];
 
 export const STATUS_COLOR = {
-  Pending: "var(--text-dim)",
+  Pending: "var(--amber)",
+  "Pending Approval": "var(--amber)",
   Approved: "var(--blue)",
   Dispatched: "var(--amber)",
   InTransit: "var(--amber)",
@@ -74,3 +77,92 @@ export function computeTotal(fuelCode, qty) {
   const tax = subtotal * TAX_RATE;
   return { subtotal, tax, total: subtotal + tax + DELIVERY_CHARGE, fuel };
 }
+
+// Depot Underground Storage Tank Inventory Telemetry
+export const SEED_DEPOT_TANKS = [
+  { id: "tank-dsl", fuelCode: "DSL", name: "Diesel Main Vault #1", capacity: 50000, current: 38400, threshold: 10000, temp: 24.2, pressure: 1.02, lastRefill: "2026-08-16" },
+  { id: "tank-ptl", fuelCode: "PTL", name: "Super Petrol Vault #2", capacity: 40000, current: 29150, threshold: 8000, temp: 22.8, pressure: 1.01, lastRefill: "2026-08-17" },
+  { id: "tank-lpg", fuelCode: "LPG", name: "LPG High-Pressure Sphere #3", capacity: 25000, current: 18900, threshold: 5000, temp: 18.5, pressure: 4.85, lastRefill: "2026-08-14" },
+  { id: "tank-krs", fuelCode: "KRS", name: "Kerosene Auxiliary Vault #4", capacity: 15000, current: 4200, threshold: 3000, temp: 25.1, pressure: 0.99, lastRefill: "2026-08-10" },
+];
+
+// Live GPS Fleet Telemetry & Active Tankers
+export const SEED_FLEET_TELEMETRY = [
+  {
+    id: "v-1",
+    vehicle: "TN-01-AB-1234",
+    driver: "R. Rangarajan",
+    phone: "+91 98400 11223",
+    status: "Delivering",
+    fuelCargo: "DSL",
+    cargoL: 3000,
+    speed: 54,
+    fuelLevel: 82,
+    tirePressure: 108,
+    engineTemp: 87,
+    x: 42,
+    y: 35,
+    dest: "Chennai Steel Works",
+    lat: 13.0827,
+    lng: 80.2707,
+    eta: "14 mins",
+  },
+  {
+    id: "v-2",
+    vehicle: "TN-07-CD-4321",
+    driver: "V. Vasanth",
+    phone: "+91 98410 22334",
+    status: "InTransit",
+    fuelCargo: "DSL",
+    cargoL: 1800,
+    speed: 68,
+    fuelLevel: 64,
+    tirePressure: 112,
+    engineTemp: 89,
+    x: 65,
+    y: 58,
+    dest: "Om Sri Hospital (Madurai)",
+    lat: 9.9252,
+    lng: 78.1198,
+    eta: "28 mins",
+  },
+  {
+    id: "v-3",
+    vehicle: "TN-09-EF-5678",
+    driver: "K. Elango",
+    phone: "+91 98420 33445",
+    status: "Idle",
+    fuelCargo: "DSL",
+    cargoL: 0,
+    speed: 0,
+    fuelLevel: 95,
+    tirePressure: 110,
+    engineTemp: 45,
+    x: 25,
+    y: 72,
+    dest: "Coimbatore Depot Base",
+    lat: 11.0168,
+    lng: 76.9558,
+    eta: "Stationary",
+  },
+  {
+    id: "v-4",
+    vehicle: "TN-11-GH-9012",
+    driver: "M. Saravanan",
+    phone: "+91 98430 44556",
+    status: "Dispatched",
+    fuelCargo: "PTL",
+    cargoL: 2200,
+    speed: 61,
+    fuelLevel: 78,
+    tirePressure: 109,
+    engineTemp: 86,
+    x: 78,
+    y: 28,
+    dest: "Suresh Transports (Trichy)",
+    lat: 10.7905,
+    lng: 78.7047,
+    eta: "45 mins",
+  },
+];
+

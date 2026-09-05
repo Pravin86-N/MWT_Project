@@ -14,7 +14,7 @@ npm run dev
 
 Then open the printed local URL. Demo accounts:
 
-- `priya@fdms.com` / `depot123` (Depot Manager)
+- `pravin@123` / `pravin123` (Depot Manager)
 - `admin@fdms.com` / `admin123` (Admin)
 
 ## What's in it

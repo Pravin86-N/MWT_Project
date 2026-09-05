@@ -1,21 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, useState } from "react";
 import { SEED_ORDERS, STATUS_FLOW } from "../data/seed";
-
-/**
- * OrdersContext
- * -------------------------------------------------------------
- * The order manifest used to live entirely inside Dashboard's
- * local useState. Now that the app has separate Orders and Order
- * Detail pages that all need to read AND mutate the same list,
- * that state has to move somewhere all of them can reach without
- * prop-drilling through the router — a Context, exactly like
- * AuthContext and ThemeContext.
- *
- * useReducer is used (rather than several useState calls) because
- * "advance status" / "cancel" / "add" / "update" / "delete" are a
- * closed set of well-defined transitions on one list, which is the
- * textbook case for a reducer over ad-hoc setState calls.
- */
+import { useInventory } from "./InventoryContext";
+import { useNotifications } from "./NotificationContext";
 
 function ordersReducer(state, action) {
   switch (action.type) {
@@ -25,7 +11,7 @@ function ordersReducer(state, action) {
       return [{ ...action.payload, id: Date.now() }, ...state];
     case "ADVANCE":
       return state.map((o) => {
-        if (o.id !== action.id || o.status === "Delivered" || o.status === "Cancelled") return o;
+        if (o.id !== action.id || o.status === "Delivered" || o.status === "Cancelled" || o.status === "Rejected") return o;
         const next = STATUS_FLOW[Math.min(STATUS_FLOW.indexOf(o.status) + 1, STATUS_FLOW.length - 1)];
         return { ...o, status: next };
       });
@@ -45,9 +31,10 @@ const OrdersContext = createContext(null);
 export function OrdersProvider({ children }) {
   const [orders, dispatch] = useReducer(ordersReducer, []);
   const [loading, setLoading] = useState(true);
+  const { reserveStock, releaseReservation, deductStock, hasSufficientStock } = useInventory();
+  const { addNotification } = useNotifications();
 
-  // useEffect: simulate an initial API call loading today's
-  // orders, preferring anything already saved in this browser.
+  // useEffect: simulate initial API call loading orders
   useEffect(() => {
     const timer = setTimeout(() => {
       const saved = localStorage.getItem("fdms-orders");
@@ -58,24 +45,125 @@ export function OrdersProvider({ children }) {
   }, []);
 
   // useEffect: persist to localStorage whenever the list changes
-  // (skips the very first render, before data has loaded).
   useEffect(() => {
     if (!loading) localStorage.setItem("fdms-orders", JSON.stringify(orders));
   }, [orders, loading]);
 
-  const advanceStatus = useCallback((id) => dispatch({ type: "ADVANCE", id }), []);
-  const cancelOrder = useCallback((id) => dispatch({ type: "CANCEL", id }), []);
+  const advanceStatus = useCallback(
+    (id) => {
+      const o = orders.find((ord) => ord.id === id);
+      if (o) {
+        const currentIdx = STATUS_FLOW.indexOf(o.status);
+        if (currentIdx !== -1 && currentIdx < STATUS_FLOW.length - 1) {
+          const nextStatus = STATUS_FLOW[currentIdx + 1];
+
+          if (nextStatus === "Dispatched") {
+            if (!o.driver || o.driver === "Unassigned" || !o.vehicle || o.vehicle === "—" || o.vehicle === "Unassigned") {
+              return {
+                success: false,
+                requireAssignment: true,
+                message: "Dispatch Assignment Required: Driver and Vehicle must both be assigned before dispatching.",
+              };
+            }
+          }
+
+          if (nextStatus === "Approved") {
+            const res = reserveStock(o.fuelCode, o.qty);
+            if (!res.success) {
+              alert(`Cannot advance order: ${res.reason}`);
+              return { success: false, message: res.reason };
+            }
+          }
+
+          if (nextStatus === "Delivered") {
+            deductStock(o.fuelCode, o.qty);
+            addNotification({
+              title: "Fuel Delivered",
+              message: `Order ${o.orderNumber} (${o.qty.toLocaleString()} L ${o.fuelCode}) has been DELIVERED to ${o.site}!`,
+              category: "delivery",
+              role: "Customer",
+              type: "success",
+              orderId: o.orderNumber,
+            });
+          }
+        }
+      }
+      dispatch({ type: "ADVANCE", id });
+      return { success: true };
+    },
+    [orders, reserveStock, deductStock, addNotification]
+  );
+
+  const cancelOrder = useCallback(
+    (id) => {
+      const o = orders.find((ord) => ord.id === id);
+      if (o && (o.status === "Approved" || o.status === "Dispatched" || o.status === "InTransit")) {
+        releaseReservation(o.fuelCode, o.qty);
+      }
+      dispatch({ type: "CANCEL", id });
+    },
+    [orders, releaseReservation]
+  );
+
   const addOrder = useCallback((order) => dispatch({ type: "ADD", payload: order }), []);
-  const updateOrder = useCallback((id, payload) => dispatch({ type: "UPDATE", id, payload }), []);
+
+  const updateOrder = useCallback(
+    (id, payload) => {
+      const o = orders.find((ord) => ord.id === id);
+      if (o) {
+        if (payload.status === "Approved" && o.status !== "Approved") {
+          const res = reserveStock(o.fuelCode, o.qty);
+          if (!res.success) {
+            alert(`Cannot approve order: ${res.reason}`);
+            return false;
+          }
+        }
+
+        if (payload.status === "Delivered" && o.status !== "Delivered") {
+          deductStock(o.fuelCode, o.qty);
+          addNotification({
+            title: "Fuel Delivered",
+            message: `Order ${o.orderNumber} (${o.qty.toLocaleString()} L ${o.fuelCode}) has been DELIVERED to ${o.site}!`,
+            category: "delivery",
+            role: "Customer",
+            type: "success",
+            orderId: o.orderNumber,
+          });
+        }
+
+        if (
+          (payload.status === "Cancelled" || payload.status === "Rejected") &&
+          (o.status === "Approved" || o.status === "Dispatched" || o.status === "InTransit")
+        ) {
+          releaseReservation(o.fuelCode, o.qty);
+        }
+      }
+      dispatch({ type: "UPDATE", id, payload });
+      return true;
+    },
+    [orders, reserveStock, releaseReservation, deductStock, addNotification]
+  );
+
   const deleteOrder = useCallback((id) => dispatch({ type: "DELETE", id }), []);
+
   const resetToSeed = useCallback(() => {
     localStorage.removeItem("fdms-orders");
     dispatch({ type: "LOAD", payload: SEED_ORDERS });
   }, []);
 
   const value = useMemo(
-    () => ({ orders, loading, advanceStatus, cancelOrder, addOrder, updateOrder, deleteOrder, resetToSeed }),
-    [orders, loading, advanceStatus, cancelOrder, addOrder, updateOrder, deleteOrder, resetToSeed]
+    () => ({
+      orders,
+      loading,
+      advanceStatus,
+      cancelOrder,
+      addOrder,
+      updateOrder,
+      deleteOrder,
+      resetToSeed,
+      hasSufficientStock,
+    }),
+    [orders, loading, advanceStatus, cancelOrder, addOrder, updateOrder, deleteOrder, resetToSeed, hasSufficientStock]
   );
 
   return <OrdersContext.Provider value={value}>{children}</OrdersContext.Provider>;

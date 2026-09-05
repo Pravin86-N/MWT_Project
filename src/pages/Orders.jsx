@@ -1,30 +1,23 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Search, Plus, ArrowUpDown } from "lucide-react";
+import { Search, ArrowUpDown, Download } from "lucide-react";
 import { STATUS_FLOW } from "../data/seed";
 import { useOrders } from "../context/OrdersContext";
 import { useLanguage } from "../context/LanguageContext";
 import OrderRow from "../components/OrderRow";
-import NewOrderModal from "../components/NewOrderModal";
+import InvoiceModal from "../components/InvoiceModal";
+import DispatchModal from "../components/DispatchModal";
 
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 8;
 
-/**
- * PURPOSE OF useSearchParams HERE:
- * The status filter and current page are the kind of state a user
- * expects to survive a refresh or be shareable as a link (e.g.
- * "/orders?status=Pending&page=2"). Putting them in the URL via
- * useSearchParams — rather than useState — gets that for free and
- * is the react-router-idiomatic place for filter/sort state that
- * should be bookmarkable.
- */
 export default function Orders() {
   const { t } = useLanguage();
-  const { orders, loading, advanceStatus, cancelOrder, addOrder } = useOrders();
+  const { orders, loading, advanceStatus, cancelOrder, updateOrder } = useOrders();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get("search") || "");
   const [sortKey, setSortKey] = useState("orderNumber");
-  const [modalOpen, setModalOpen] = useState(false);
+  const [invoiceOrder, setInvoiceOrder] = useState(null);
+  const [dispatchOrder, setDispatchOrder] = useState(null);
 
   const statusFilter = searchParams.get("status") || "All";
   const page = Number(searchParams.get("page") || 1);
@@ -58,8 +51,6 @@ export default function Orders() {
     setSortKey((prev) => (prev === key ? `-${key}` : key));
   }, []);
 
-  // useMemo: filter -> search -> sort pipeline, only recomputed
-  // when one of its real dependencies changes.
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     let list = orders.filter((o) => {
@@ -87,6 +78,24 @@ export default function Orders() {
   const clampedPage = Math.min(page, pageCount);
   const pageItems = filtered.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE);
 
+  const handleExportCSV = () => {
+    const headers = "Order Number,Customer,Site,Fuel,Quantity(L),Driver,Vehicle,City,Status,Slot\n";
+    const rows = filtered
+      .map(
+        (o) =>
+          `"${o.orderNumber}","${o.customer}","${o.site}","${o.fuelCode}",${o.qty},"${o.driver}","${o.vehicle}","${o.city}","${o.status}","${o.slot}"`
+      )
+      .join("\n");
+    const blob = new Blob([headers + rows], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `FDMS_Orders_Manifest_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="page">
       <div className="page-head">
@@ -94,9 +103,14 @@ export default function Orders() {
           <h1>{t("ordersTitle")}</h1>
           <p className="page-sub">{t("ordersSubtitle")}</p>
         </div>
-        <div className="page-head-stat">
-          <span className="stat-label">{t("totalOrders")}</span>
-          <span className="stat-value amber">{orders.length}</span>
+        <div className="page-head-actions">
+          <button className="btn-secondary" onClick={handleExportCSV}>
+            <Download size={15} /> {t("exportCSV")}
+          </button>
+          <div className="page-head-stat">
+            <span className="stat-label">{t("totalOrders")}</span>
+            <span className="stat-value amber">{orders.length}</span>
+          </div>
         </div>
       </div>
 
@@ -119,9 +133,6 @@ export default function Orders() {
         </select>
         <button className="btn-ghost" onClick={() => toggleSort("qty")}>
           <ArrowUpDown size={14} /> {t("qty")}
-        </button>
-        <button className="btn-primary" onClick={() => setModalOpen(true)}>
-          <Plus size={16} /> {t("newOrder")}
         </button>
       </section>
 
@@ -150,7 +161,7 @@ export default function Orders() {
               </thead>
               <tbody>
                 {pageItems.map((o) => (
-                  <OrderRow key={o.id} order={o} onAdvance={advanceStatus} onCancel={cancelOrder} />
+                  <OrderRow key={o.id} order={o} onAdvance={advanceStatus} onCancel={cancelOrder} onDispatch={setDispatchOrder} />
                 ))}
               </tbody>
             </table>
@@ -173,7 +184,14 @@ export default function Orders() {
         )}
       </section>
 
-      <NewOrderModal open={modalOpen} onClose={() => setModalOpen(false)} onCreate={addOrder} />
+      {invoiceOrder && <InvoiceModal order={invoiceOrder} onClose={() => setInvoiceOrder(null)} />}
+      {dispatchOrder && (
+        <DispatchModal
+          order={dispatchOrder}
+          onClose={() => setDispatchOrder(null)}
+          onConfirm={(id, payload) => updateOrder(id, payload)}
+        />
+      )}
     </div>
   );
 }

@@ -1,0 +1,79 @@
+:root {
+    --primary-color: #4CAF50; /* Green */
+    --secondary-color: #FF9800; /* Orange */
+    --accent-color: #2196F3; /* Blue */
+    --background-color: #F5F5F5; /* Light Gray */
+    --text-color: #212121; /* Dark Gray */
+    --header-background: #FFFFFF; /* White */
+    --card-background: #FFFFFF; /* White */
+    --border-color: #E0E0E0; /* Light Gray */
+    --button-hover-color: #388E3C; /* Darker Green */
+}
+
+body {
+    margin: 0;
+    font-family: 'Roboto', sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-color);
+}
+
+h1, h2, h3, h4, h5, h6 {
+    margin: 0;
+    color: var(--text-color);
+}
+
+a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+header {
+    background-color: var(--header-background);
+    padding: 20px;
+    box-shadow: 0 2px 4px var(--border-color);
+}
+
+.card {
+    background-color: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.button:hover {
+    background-color: var(--button-hover-color);
+}
+
+.status-badge {
+    padding: 5px 10px;
+    border-radius: 12px;
+    color: white;
+    font-size: 0.875rem;
+}
+
+.status-badge.success {
+    background-color: var(--primary-color);
+}
+
+.status-badge.warning {
+    background-color: var(--secondary-color);
+}
+
+.status-badge.error {
+    background-color: #F44336; /* Red */
+}

@@ -2,9 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { X } from "lucide-react";
 import { FUEL_TYPES, computeTotal } from "../data/seed";
 import { useLanguage } from "../context/LanguageContext";
+import { useNotifications } from "../context/NotificationContext";
 
-export default function NewOrderModal({ open, onClose, onCreate }) {
+export default function NewOrderModal({ open, onClose, onCreate, initialData }) {
   const { t } = useLanguage();
+  const { addNotification } = useNotifications();
   const [customer, setCustomer] = useState("");
   const [city, setCity] = useState("Chennai");
   const [fuelCode, setFuelCode] = useState("DSL");
@@ -17,10 +19,16 @@ export default function NewOrderModal({ open, onClose, onCreate }) {
   const firstFieldRef = useRef(null);
 
   // useEffect: runs whenever `open` changes; the moment the modal
-  // becomes visible we move keyboard focus into it.
+  // becomes visible we move keyboard focus into it and apply initialData if provided.
   useEffect(() => {
-    if (open) firstFieldRef.current?.focus();
-  }, [open]);
+    if (open) {
+      firstFieldRef.current?.focus();
+      if (initialData) {
+        if (initialData.fuelCode) setFuelCode(initialData.fuelCode);
+        if (initialData.qty) setQty(initialData.qty);
+      }
+    }
+  }, [open, initialData]);
 
   // useMemo: the price preview involves a small calculation
   // (subtotal, tax, delivery charge). Memoizing it means it's
@@ -33,18 +41,40 @@ export default function NewOrderModal({ open, onClose, onCreate }) {
   const submit = (e) => {
     e.preventDefault();
     if (!customer.trim()) return;
+    const orderNumber = `FD-${Date.now().toString().slice(-9)}`;
+    const newQty = Number(qty);
+
     onCreate({
-      orderNumber: `FD-${Date.now().toString().slice(-9)}`,
+      orderNumber,
       customer,
-      site: "Office",
+      site: "Primary Delivery Site",
       fuelCode,
-      qty: Number(qty),
+      qty: newQty,
       driver: "Unassigned",
       vehicle: "—",
       city,
-      status: "Pending",
-      slot: "To be scheduled",
+      status: "Pending Approval",
+      slot: "Pending Approval",
     });
+
+    addNotification({
+      title: "Request Submitted",
+      message: `Fuel request ${orderNumber} for ${newQty.toLocaleString()} L of ${fuelCode} submitted & pending manager review.`,
+      category: "request",
+      role: "Customer",
+      type: "info",
+      orderId: orderNumber,
+    });
+
+    addNotification({
+      title: "New Fuel Request",
+      message: `New bulk fuel request ${orderNumber} from ${customer} (${newQty.toLocaleString()} L ${fuelCode}) awaiting manager review.`,
+      category: "request",
+      role: "Manager",
+      type: "info",
+      orderId: orderNumber,
+    });
+
     setCustomer("");
     setQty(100);
     onClose();
@@ -54,7 +84,7 @@ export default function NewOrderModal({ open, onClose, onCreate }) {
     <div className="modal-backdrop" onClick={onClose}>
       <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
         <div className="modal-head">
-          <h3>{t("new")} {t("newOrder").toLowerCase()}</h3>
+          <h3>Request Fuel</h3>
           <button type="button" className="icon-btn" onClick={onClose}>
             <X size={18} />
           </button>
@@ -100,7 +130,7 @@ export default function NewOrderModal({ open, onClose, onCreate }) {
         </div>
 
         <button type="submit" className="btn-primary full">
-          {t("createOrder")}
+          Submit Fuel Request (Pending Approval)
         </button>
       </form>
     </div>

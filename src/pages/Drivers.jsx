@@ -1,42 +1,36 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Plus, Phone, Truck } from "lucide-react";
+import { Plus, Phone, ShieldCheck, UserCheck, Star, Award, ClipboardList, Clock, Truck } from "lucide-react";
 import { SEED_DRIVERS } from "../data/seed";
 import { useOrders } from "../context/OrdersContext";
 import { useLanguage } from "../context/LanguageContext";
 
-/**
- * PURPOSE OF useState + useEffect HERE (rather than a context):
- * The driver roster isn't referenced anywhere outside this page
- * (unlike orders, which Dashboard/Orders/OrderDetail all share),
- * so a page-local reducer-free useState plus a localStorage-synced
- * useEffect is enough — reaching for another Context would be
- * unnecessary machinery for state only one page reads.
- */
 export default function Drivers() {
   const { t } = useLanguage();
   const { orders } = useOrders();
+
   const [drivers, setDrivers] = useState(() => {
     const saved = localStorage.getItem("fdms-drivers");
     return saved ? JSON.parse(saved) : SEED_DRIVERS;
   });
+
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [vehicle, setVehicle] = useState("");
+  const [license, setLicense] = useState("");
 
   useEffect(() => {
     localStorage.setItem("fdms-drivers", JSON.stringify(drivers));
   }, [drivers]);
 
-  // useMemo: how many orders each driver currently has active,
-  // derived from the shared OrdersContext list.
-  const activeCounts = useMemo(() => {
-    const counts = {};
+  // Derive active assigned orders per driver from OrdersContext
+  const driverActiveOrders = useMemo(() => {
+    const map = {};
     for (const o of orders) {
-      if (o.status === "Dispatched" || o.status === "InTransit") {
-        counts[o.driver] = (counts[o.driver] || 0) + 1;
+      if (o.driver && o.driver !== "Unassigned" && (o.status === "Dispatched" || o.status === "InTransit" || o.status === "Approved")) {
+        if (!map[o.driver]) map[o.driver] = [];
+        map[o.driver].push(o);
       }
     }
-    return counts;
+    return map;
   }, [orders]);
 
   const toggleDuty = useCallback((id) => {
@@ -47,68 +41,132 @@ export default function Drivers() {
     e.preventDefault();
     if (!name.trim()) return;
     setDrivers((prev) => [
-      { id: Date.now(), name, phone, vehicle: vehicle || "—", onDuty: true, deliveries: 0 },
+      {
+        id: Date.now(),
+        name,
+        phone: phone || "+91 98765 43210",
+        license: license || `TN-${Math.floor(1000 + Math.random() * 9000)}-2024`,
+        onDuty: true,
+        deliveries: 0,
+        rating: 4.9,
+      },
       ...prev,
     ]);
     setName("");
     setPhone("");
-    setVehicle("");
+    setLicense("");
   };
 
   return (
-    <div className="page">
-      <div className="page-head">
+    <div className="page" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      {/* Header Banner */}
+      <div className="fleet-header-saas" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <h1>{t("driversTitle")}</h1>
-          <p className="page-sub">{t("driversSubtitle")}</p>
+          <h1 className="fleet-title-saas">Driver Workforce & Duty Roster</h1>
+          <p className="fleet-subtitle-saas">
+            Manage driver profiles, toggle real-time duty availability, and monitor active delivery assignments.
+          </p>
         </div>
       </div>
 
-      <section className="panel form-panel">
-        <form className="field-row" onSubmit={addDriver}>
+      {/* Add New Driver Form Panel */}
+      <section className="panel form-panel" style={{ padding: "20px", background: "var(--grad-dark-panel)", borderRadius: "16px", border: "1px solid var(--line)" }}>
+        <h3 style={{ margin: "0 0 14px 0", fontSize: "15px", fontWeight: "700" }}>Onboard New Qualified Driver</h3>
+        <form className="field-row" onSubmit={addDriver} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: "14px", alignItems: "end" }}>
           <label className="field">
-            <span>{t("name")}</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="D. Kumar" required />
+            <span>Driver Full Name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., D. Kumar" required />
           </label>
           <label className="field">
-            <span>{t("phone")}</span>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 9XXXXXXXXX" />
+            <span>Phone Contact</span>
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" />
           </label>
           <label className="field">
-            <span>{t("vehicle")}</span>
-            <input value={vehicle} onChange={(e) => setVehicle(e.target.value)} placeholder="TN-00-XX-0000" />
+            <span>License Number</span>
+            <input value={license} onChange={(e) => setLicense(e.target.value)} placeholder="TN-01-2024-9876" />
           </label>
-          <button type="submit" className="btn-primary" style={{ alignSelf: "flex-end" }}>
-            <Plus size={16} /> {t("addDriver")}
+          <button type="submit" className="btn-primary" style={{ backgroundColor: "var(--orange)", borderColor: "var(--orange)", fontWeight: "700" }}>
+            <Plus size={16} /> Register Driver
           </button>
         </form>
       </section>
 
-      <section className="cards-grid">
-        {drivers.map((d) => (
-          <div key={d.id} className="panel driver-card">
-            <div className="driver-card-head">
-              <div className="cell-strong">{d.name}</div>
-              <button
-                className={"pill toggle" + (d.onDuty ? "" : " off")}
-                style={{ "--pill-color": d.onDuty ? "var(--green)" : "var(--text-dim)" }}
-                onClick={() => toggleDuty(d.id)}
-              >
-                {d.onDuty ? t("onDuty") : t("offDuty")}
-              </button>
+      {/* Drivers Roster Cards Grid */}
+      <section className="cards-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "20px" }}>
+        {drivers.map((d) => {
+          const assignedOrders = driverActiveOrders[d.name] || [];
+          return (
+            <div key={d.id} className="panel driver-card" style={{ padding: "20px", borderRadius: "16px", border: "1px solid var(--line)", background: "var(--panel)" }}>
+              {/* Header & Availability Toggle */}
+              <div className="driver-card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                <div>
+                  <div className="cell-strong" style={{ fontSize: "16px", fontWeight: "800", color: "var(--text)" }}>
+                    {d.name}
+                  </div>
+                  <small style={{ color: "var(--text-dim)", fontSize: "12px" }}>
+                    Lic: {d.license || `TN-${Math.floor(1000 + Math.random() * 9000)}-2024`}
+                  </small>
+                </div>
+
+                {/* Duty Availability Toggle Button */}
+                <button
+                  className={"pill toggle" + (d.onDuty ? "" : " off")}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: "20px",
+                    fontWeight: "800",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    border: "none",
+                    background: d.onDuty ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.08)",
+                    color: d.onDuty ? "var(--green-neon)" : "var(--text-dim)",
+                  }}
+                  onClick={() => toggleDuty(d.id)}
+                >
+                  {d.onDuty ? "🟢 ON DUTY" : "⚪ OFF DUTY"}
+                </button>
+              </div>
+
+              {/* Driver Details */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "13px", color: "var(--text-dim)", marginBottom: "14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Phone size={14} style={{ color: "var(--orange)" }} /> <span>{d.phone || "+91 98765 43210"}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Star size={14} style={{ color: "var(--amber)" }} /> <span>Rating: <strong style={{ color: "var(--text)" }}>{d.rating || "4.9"} / 5.0</strong></span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <Award size={14} style={{ color: "var(--blue)" }} /> <span>Completed Deliveries: <strong style={{ color: "var(--text)" }}>{d.deliveries} orders</strong></span>
+                </div>
+              </div>
+
+              {/* Assigned Active Orders Section */}
+              <div style={{ background: "var(--grad-dark-panel)", padding: "12px", borderRadius: "12px", border: "1px solid var(--line)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: "700", color: "var(--text-dim)" }}>Assigned Active Orders</span>
+                  <span className="pill status-dispatched" style={{ fontSize: "10px", padding: "2px 6px" }}>
+                    {assignedOrders.length} Active
+                  </span>
+                </div>
+
+                {assignedOrders.length === 0 ? (
+                  <div style={{ fontSize: "12px", color: "var(--text-dim)", fontStyle: "italic" }}>
+                    No active orders currently assigned. Driver available for dispatch.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {assignedOrders.map((o) => (
+                      <div key={o.id} style={{ fontSize: "12px", display: "flex", justifyContent: "space-between", color: "var(--text)" }}>
+                        <span>🚚 <strong>{o.orderNumber}</strong> ({o.site})</span>
+                        <span style={{ color: "var(--orange)", fontWeight: "700" }}>{o.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="cell-dim" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <Phone size={12} /> {d.phone || "—"}
-            </div>
-            <div className="cell-dim" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <Truck size={12} /> {d.vehicle}
-            </div>
-            <div className="driver-stats">
-              <span>{t("deliveriesDone")}: <strong>{d.deliveries}</strong></span>
-              <span>{t("nav_orders")}: <strong>{activeCounts[d.name] || 0}</strong></span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </section>
     </div>
   );
