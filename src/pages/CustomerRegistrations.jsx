@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { registrationApi } from "../services/api";
 import {
   Building2,
   FileText,
@@ -117,6 +118,58 @@ export default function CustomerRegistrations() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [selectedReg, setSelectedReg] = useState(null);
 
+  // Load from backend API on mount
+  useEffect(() => {
+    let mounted = true;
+    registrationApi
+      .getRegistrations()
+      .then((res) => {
+        if (mounted && res.data && res.data.length > 0) {
+          const normalized = res.data.map((r) => ({
+            id: r.regId || r._id,
+            mongoId: r._id,
+            companyName: r.companyName,
+            businessType: r.businessType || "Commercial",
+            contactPerson: r.authorizedPerson || r.contactPerson || "Authorized Rep",
+            designation: r.designation || "Director",
+            mobile: r.phone || r.mobile || "—",
+            email: r.email,
+            address1: r.address || r.address1 || "Tamil Nadu",
+            city: r.city || "Chennai",
+            state: r.state || "Tamil Nadu",
+            postalCode: r.pincode || r.postalCode || "600001",
+            gstNumber: r.gstNumber,
+            panNumber: r.panNumber,
+            companyRegNo: r.companyRegNo || "",
+            fuelType: r.fuelType || "DSL",
+            monthlyConsumption: r.monthlyConsumption || 30000,
+            status: r.status === "Approved" ? "Verified" : r.status,
+            submittedAt: r.createdAt
+              ? new Date(r.createdAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "2-digit",
+                  year: "numeric",
+                })
+              : "Recent",
+            documents:
+              r.documents && r.documents.length > 0
+                ? r.documents
+                : [
+                    { type: "GST Certificate", fileName: r.gstCertificate?.fileName || "GST_Cert.pdf" },
+                    { type: "PAN Card", fileName: r.panCard?.fileName || "PAN_Card.pdf" },
+                  ],
+          }));
+          setRegistrations(normalized);
+        }
+      })
+      .catch((err) => {
+        console.warn("[Registrations] Backend API unavailable, continuing with local data:", err.message);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // Sync to localStorage
   useEffect(() => {
     localStorage.setItem("fdms-customer-registrations", JSON.stringify(registrations));
@@ -142,7 +195,12 @@ export default function CustomerRegistrations() {
   }, [registrations]);
 
   // Actions
-  const handleApprove = (id) => {
+  const handleApprove = async (id) => {
+    try {
+      await registrationApi.updateStatus(id, "Approved", "Approved by Depot Manager");
+    } catch (err) {
+      console.warn("[Registrations] API update error, updating locally:", err.message);
+    }
     setRegistrations((prev) =>
       prev.map((r) => (r.id === id ? { ...r, status: "Verified" } : r))
     );
@@ -152,7 +210,12 @@ export default function CustomerRegistrations() {
     alert("Customer Registration Approved! Business account has been activated.");
   };
 
-  const handleReject = (id) => {
+  const handleReject = async (id) => {
+    try {
+      await registrationApi.updateStatus(id, "Rejected", "Application rejected by reviewer");
+    } catch (err) {
+      console.warn("[Registrations] API update error, updating locally:", err.message);
+    }
     setRegistrations((prev) =>
       prev.map((r) => (r.id === id ? { ...r, status: "Rejected" } : r))
     );

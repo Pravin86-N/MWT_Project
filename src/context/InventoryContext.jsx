@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import { SEED_DEPOT_TANKS } from "../data/seed";
+import { inventoryApi } from "../services/api";
 
 const InventoryContext = createContext(null);
 
@@ -9,14 +10,52 @@ export function InventoryProvider({ children }) {
     return saved ? JSON.parse(saved) : SEED_DEPOT_TANKS;
   });
 
+  // Load live inventory from backend API
+  useEffect(() => {
+    let mounted = true;
+    inventoryApi
+      .getInventory()
+      .then((res) => {
+        if (mounted && res.data && res.data.length > 0) {
+          const normalized = res.data.map((t) => ({
+            id: t.tankId || t._id,
+            mongoId: t._id,
+            fuelCode: t.fuelType || t.fuelCode,
+            name: t.name || `Tank - ${t.fuelType || t.fuelCode}`,
+            capacity: t.capacity,
+            current: t.currentStock != null ? t.currentStock : t.current,
+            threshold: t.minimumThreshold != null ? t.minimumThreshold : t.threshold,
+            reserved: t.reserved || 0,
+            temp: t.temp || 25.0,
+            pressure: t.pressure || 1.0,
+            lastRefill: t.lastRefill || new Date().toISOString().split("T")[0],
+          }));
+          setTanks(normalized);
+        }
+      })
+      .catch((err) => {
+        console.warn("[Inventory] Backend API unavailable, continuing with local tanks:", err.message);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   useEffect(() => {
     localStorage.setItem("fdms-depot-tanks", JSON.stringify(tanks));
   }, [tanks]);
 
   const refillTank = useCallback((tankId, amount = 10000) => {
+    inventoryApi
+      .refillInventory({ tankId, amount, quantity: amount })
+      .catch((err) => {
+        console.warn("[Inventory] API refill error, updating locally:", err.message);
+      });
+
     setTanks((prev) =>
       prev.map((t) => {
-        if (t.id === tankId) {
+        if (t.id === tankId || t.fuelCode === tankId) {
           const newCurrent = Math.min(t.capacity, t.current + amount);
           return {
             ...t,

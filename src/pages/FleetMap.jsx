@@ -24,6 +24,7 @@ import {
 import { SEED_FLEET_TELEMETRY } from "../data/seed";
 import { useOrders } from "../context/OrdersContext";
 import { useNotifications } from "../context/NotificationContext";
+import { vehicleApi } from "../services/api";
 
 // REAL GPS COORDINATES FOR TAMIL NADU CITIES & DEPOTS
 const DEPOT_LOCATIONS = [
@@ -144,6 +145,33 @@ export default function FleetMap() {
     "v-3": { lat: 12.5000, lng: 79.8000, routeIdx: 1, progress: 0.5 },
     "v-4": { lat: 9.9252, lng: 78.1198, routeIdx: 0, progress: 0 },
   });
+
+  // Fetch live vehicle telemetry coordinates from backend API on mount
+  useEffect(() => {
+    let mounted = true;
+    vehicleApi
+      .getVehicles()
+      .then((res) => {
+        if (mounted && res.data && res.data.length > 0) {
+          const apiPositions = {};
+          res.data.forEach((v, idx) => {
+            const id = v._id || `v-${idx + 1}`;
+            if (v.latitude && v.longitude) {
+              apiPositions[id] = { lat: v.latitude, lng: v.longitude, routeIdx: 0, progress: 0 };
+            }
+          });
+          if (Object.keys(apiPositions).length > 0) {
+            setLivePositions((prev) => ({ ...prev, ...apiPositions }));
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn("[FleetMap] Backend API vehicles unavailable, using default telemetry:", err.message);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Map Fleet Vehicles mapping
   const vehicles = useMemo(() => {

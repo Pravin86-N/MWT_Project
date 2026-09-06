@@ -31,6 +31,7 @@ import { useInventory } from "../context/InventoryContext";
 import { useLanguage } from "../context/LanguageContext";
 import OrderRow from "../components/OrderRow";
 import DispatchModal from "../components/DispatchModal";
+import { dashboardApi } from "../services/api";
 
 export default function Dashboard() {
   const { t } = useLanguage();
@@ -42,7 +43,27 @@ export default function Dashboard() {
 
   const [search, setSearch] = useState("");
   const [dispatchModalOrder, setDispatchModalOrder] = useState(null);
+  const [serverStats, setServerStats] = useState(null);
   const searchRef = useRef(null);
+
+  // Fetch aggregated dashboard metrics from backend API
+  useEffect(() => {
+    let mounted = true;
+    dashboardApi
+      .getDashboardStats()
+      .then((res) => {
+        if (mounted && res?.data) {
+          setServerStats(res.data);
+        }
+      })
+      .catch((err) => {
+        console.warn("[Dashboard] Aggregated stats API unavailable, using live context metrics:", err.message);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const pendingRequests = useMemo(
     () => orders.filter((o) => o.status === "Pending" || o.status === "Pending Approval"),
@@ -83,14 +104,26 @@ export default function Dashboard() {
   }, [orders, search]);
 
   const stats = useMemo(() => {
-    const litresToday = orders.reduce((s, o) => s + o.qty, 0);
+    const litresToday = orders.reduce((s, o) => s + (o.qty || o.quantity || 0), 0);
     const revenue = orders
-      .filter((o) => o.status !== "Cancelled")
-      .reduce((s, o) => s + computeTotal(o.fuelCode, o.qty).total, 0);
-    const active = orders.filter((o) => o.status === "InTransit" || o.status === "Dispatched").length;
+      .filter((o) => o.status !== "Cancelled" && o.status !== "Rejected")
+      .reduce((s, o) => s + (o.total || computeTotal(o.fuelCode, o.qty).total), 0);
+    const active = orders.filter(
+      (o) =>
+        o.status === "InTransit" ||
+        o.status === "In Transit" ||
+        o.status === "Dispatched" ||
+        o.status === "Assigned"
+    ).length;
     const completed = orders.filter((o) => o.status === "Delivered").length;
-    return { litresToday, revenue, active, completed, totalCount: orders.length };
-  }, [orders]);
+    return {
+      litresToday: serverStats?.orders?.litresToday || litresToday,
+      revenue: serverStats?.orders?.revenue || revenue,
+      active: serverStats?.orders?.activeDeliveries || active,
+      completed: serverStats?.orders?.completedDeliveries || completed,
+      totalCount: serverStats?.orders?.total || orders.length,
+    };
+  }, [orders, serverStats]);
 
   const todayDateStr = new Date().toLocaleDateString("en-US", {
     weekday: "long",

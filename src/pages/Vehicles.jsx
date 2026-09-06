@@ -3,6 +3,7 @@ import { Truck, Plus, ShieldCheck, Wrench, Navigation, CheckCircle2, User, Fuel,
 import { SEED_DRIVERS } from "../data/seed";
 import { useOrders } from "../context/OrdersContext";
 import { useLanguage } from "../context/LanguageContext";
+import { vehicleApi } from "../services/api";
 
 const INITIAL_FLEET_VEHICLES = [
   { id: "v1", reg: "TN-01-AB-1234", type: "Fuel Tanker 12,000L", capacity: 12000, status: "Available", driver: "R. Selvam", odometer: 42150, lastService: "2026-07-15" },
@@ -24,6 +25,40 @@ export default function Vehicles() {
   const [type, setType] = useState("Fuel Tanker 12,000L");
   const [capacity, setCapacity] = useState(12000);
   const [assignedDriver, setAssignedDriver] = useState("Unassigned");
+
+  // Load live vehicles from backend API on mount
+  useEffect(() => {
+    let mounted = true;
+    vehicleApi
+      .getVehicles()
+      .then((res) => {
+        if (mounted && res.data && res.data.length > 0) {
+          const normalized = res.data.map((v, idx) => ({
+            id: v._id || `v-${idx + 1}`,
+            mongoId: v._id,
+            reg: v.vehicleNumber || v.reg || v.vehicle || `TN-01-FL-${idx + 1000}`,
+            type: v.type || "Fuel Tanker 12,000L",
+            capacity: v.capacity || 12000,
+            status: v.status === "InTransit" ? "In Transit" : v.status || "Available",
+            driver: v.driverName || v.driver || "Unassigned",
+            odometer: v.odometer || 40000 + idx * 2500,
+            lastService: v.lastService || "2026-07-15",
+            latitude: v.latitude,
+            longitude: v.longitude,
+            speed: v.speed,
+            fuelLevel: v.fuelLevel,
+          }));
+          setVehicles(normalized);
+        }
+      })
+      .catch((err) => {
+        console.warn("[Vehicles] Backend API unavailable, using local vehicles:", err.message);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("fdms-vehicles", JSON.stringify(vehicles));
@@ -55,30 +90,57 @@ export default function Vehicles() {
     });
   }, [vehicles, orders]);
 
-  const handleAddVehicle = (e) => {
+  const handleAddVehicle = async (e) => {
     e.preventDefault();
     if (!reg.trim()) return;
-    setVehicles((prev) => [
-      {
-        id: `v-${Date.now()}`,
-        reg: reg.toUpperCase(),
+
+    const newVehicleData = {
+      id: `v-${Date.now()}`,
+      reg: reg.toUpperCase(),
+      vehicleNumber: reg.toUpperCase(),
+      type,
+      capacity: Number(capacity),
+      status: "Available",
+      driver: assignedDriver,
+      driverName: assignedDriver,
+      odometer: 10000,
+      lastService: new Date().toISOString().split("T")[0],
+    };
+
+    try {
+      const res = await vehicleApi.createVehicle({
+        vehicleNumber: reg.toUpperCase(),
         type,
         capacity: Number(capacity),
+        driverName: assignedDriver,
         status: "Available",
-        driver: assignedDriver,
-        odometer: 10000,
-        lastService: new Date().toISOString().split("T")[0],
-      },
-      ...prev,
-    ]);
+      });
+      if (res?.data?._id) {
+        newVehicleData.mongoId = res.data._id;
+        newVehicleData.id = res.data._id;
+      }
+    } catch (err) {
+      console.warn("[Vehicles] API createVehicle error, saving locally:", err.message);
+    }
+
+    setVehicles((prev) => [newVehicleData, ...prev]);
     setReg("");
     setCapacity(12000);
     setAssignedDriver("Unassigned");
   };
 
   const handleStatusChange = (id, newStatus) => {
+    const v = vehicles.find((veh) => veh.id === id);
+    if (v) {
+      vehicleApi
+        .updateStatus(v.mongoId || v.reg || id, newStatus)
+        .catch((err) => {
+          console.warn("[Vehicles] API updateStatus error:", err.message);
+        });
+    }
+
     setVehicles((prev) =>
-      prev.map((v) => (v.id === id ? { ...v, status: newStatus } : v))
+      prev.map((veh) => (veh.id === id ? { ...veh, status: newStatus } : veh))
     );
   };
 

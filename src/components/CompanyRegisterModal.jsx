@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { registrationApi } from "../services/api";
 import {
   Building2,
   MapPin,
@@ -210,16 +211,52 @@ export default function CompanyRegisterModal({ open, onClose }) {
   };
 
   // Final Registration Submission
-  const handleSubmitRegistration = () => {
+  const handleSubmitRegistration = async () => {
     const regId = "REG-2026-" + Math.floor(1000 + Math.random() * 9000);
-    const newRegistration = {
-      id: regId,
-      ...formData,
+    const docsList = Object.keys(documents)
+      .filter((k) => documents[k])
+      .map((k) => ({ type: k, fileName: documents[k].name }));
+
+    const payload = {
+      regId,
+      companyName: formData.companyName,
+      authorizedPerson: formData.contactPerson,
+      contactPerson: formData.contactPerson,
+      designation: formData.designation,
+      businessType: formData.businessType,
+      email: formData.email,
+      phone: formData.mobile,
+      mobile: formData.mobile,
+      address: formData.address1 + (formData.address2 ? ", " + formData.address2 : ""),
+      address1: formData.address1,
+      city: formData.city,
+      state: formData.state,
+      pincode: formData.postalCode,
+      postalCode: formData.postalCode,
+      gstNumber: formData.gstNumber,
+      panNumber: formData.panNumber,
+      companyRegNo: formData.companyRegNo,
+      fuelType: formData.fuelType,
+      monthlyConsumption: Number(formData.monthlyConsumption) || 0,
       coordinates: mapPos,
-      documents: Object.keys(documents)
-        .filter((k) => documents[k])
-        .map((k) => ({ type: k, fileName: documents[k].name })),
+      documents: docsList,
       status: "Pending Review",
+    };
+
+    try {
+      const res = await registrationApi.createRegistration(payload);
+      if (res?.data?.regId) {
+        payload.id = res.data.regId;
+      } else {
+        payload.id = regId;
+      }
+    } catch (err) {
+      console.warn("[Registration] API submission error, saving locally:", err.message);
+      payload.id = regId;
+    }
+
+    const newRegistration = {
+      ...payload,
       submittedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
     };
 
@@ -227,7 +264,7 @@ export default function CompanyRegisterModal({ open, onClose }) {
     const existing = JSON.parse(localStorage.getItem("fdms-customer-registrations") || "[]");
     localStorage.setItem("fdms-customer-registrations", JSON.stringify([newRegistration, ...existing]));
 
-    setSubmittedRegId(regId);
+    setSubmittedRegId(payload.id || regId);
     setSubmitted(true);
   };
 

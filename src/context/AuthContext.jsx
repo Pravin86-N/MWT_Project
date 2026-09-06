@@ -1,24 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from "react";
 import { USERS } from "../data/seed";
-
-/**
- * AuthContext
- * -------------------------------------------------------------
- * PURPOSE OF useReducer HERE:
- * A login flow isn't a single value, it's a small state machine:
- * idle -> loading -> authenticated  OR  idle -> loading -> error.
- * useState would need 2-3 separate booleans/strings that all have
- * to be kept in sync by hand (isLoading, user, error...). A
- * reducer lets every possible transition be described in one
- * place as `action.type`, which is easier to read and impossible
- * to put into an invalid combination of states.
- *
- * PURPOSE OF useContext HERE:
- * The current user and login/logout functions are needed by the
- * Navbar, the ProtectedRoute guard, and the Dashboard — none of
- * which are parent/child of each other. Context avoids threading
- * `user`, `login`, `logout` through props at every level.
- */
+import { authApi } from "../services/api";
 
 const initialState = { status: "idle", user: null, error: null };
 
@@ -44,35 +26,46 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
-  // useEffect: on first mount, check localStorage for a previously
-  // saved session so a page refresh doesn't log the user out.
   useEffect(() => {
     const saved = localStorage.getItem("fdms-user");
-    if (saved) dispatch({ type: "RESTORE_SESSION", payload: JSON.parse(saved) });
+    if (saved) {
+      try {
+        dispatch({ type: "RESTORE_SESSION", payload: JSON.parse(saved) });
+      } catch (e) {
+        localStorage.removeItem("fdms-user");
+      }
+    }
   }, []);
 
-  // useCallback: login/logout are passed down through context to
-  // far-away components (Login page, Navbar). Memoizing them keeps
-  // their identity stable so consumers relying on them in their
-  // own dependency arrays (e.g. another useEffect/useCallback)
-  // don't re-run unnecessarily.
   const login = useCallback(async (email, password) => {
     dispatch({ type: "LOGIN_START" });
-    // simulate a network round-trip to an auth API
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    const found = USERS.find((u) => u.email === email && u.password === password);
-    if (found) {
-      const { password: _pw, ...safeUser } = found;
-      localStorage.setItem("fdms-user", JSON.stringify(safeUser));
-      dispatch({ type: "LOGIN_SUCCESS", payload: safeUser });
+    try {
+      const res = await authApi.login(email, password);
+      const user = res.user || res.data || res;
+      if (res.token) {
+        user.token = res.token;
+        localStorage.setItem("fdms-token", res.token);
+      }
+      localStorage.setItem("fdms-user", JSON.stringify(user));
+      dispatch({ type: "LOGIN_SUCCESS", payload: user });
       return { ok: true };
+    } catch (err) {
+      console.warn("[Auth] API login error, checking fallback seed credentials:", err.message);
+      const found = USERS.find((u) => u.email === email && u.password === password);
+      if (found) {
+        const { password: _pw, ...safeUser } = found;
+        localStorage.setItem("fdms-user", JSON.stringify(safeUser));
+        dispatch({ type: "LOGIN_SUCCESS", payload: safeUser });
+        return { ok: true };
+      }
+      const errMsg = err.response?.data?.message || err.message || "Invalid email or password.";
+      dispatch({ type: "LOGIN_FAILURE", payload: errMsg });
+      return { ok: false, error: errMsg };
     }
-    dispatch({ type: "LOGIN_FAILURE", payload: "Invalid email or password." });
-    return { ok: false };
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("fdms-user");
+    authApi.logout();
     dispatch({ type: "LOGOUT" });
   }, []);
 
