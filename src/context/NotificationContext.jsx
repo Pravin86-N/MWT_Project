@@ -1,83 +1,97 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
-
-const SEED_NOTIFICATIONS = [
-  {
-    id: 1,
-    title: "New Fuel Request",
-    message: "New bulk fuel request #FD-260801-008 from TamilNadu Industrial Corp awaiting manager approval.",
-    category: "request",
-    role: "Manager",
-    type: "info",
-    timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-    read: false,
-  },
-  {
-    id: 2,
-    title: "Fuel Dispatched",
-    message: "Order #FD-260801-001 for Chennai Steel Works is DISPATCHED. Driver R. Rangarajan en-route.",
-    category: "dispatch",
-    role: "Customer",
-    type: "success",
-    timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-    read: false,
-  },
-  {
-    id: 3,
-    title: "Low Inventory Alert",
-    message: "Depot Tank High Speed Diesel (DSL) current stock level is below safety threshold (2,500 L).",
-    category: "inventory",
-    role: "Manager",
-    type: "warning",
-    timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    read: false,
-  },
-  {
-    id: 4,
-    title: "Request Submitted",
-    message: "Your fuel request #FD-260801-002 (4,000 L Premium Petrol) was submitted successfully.",
-    category: "request",
-    role: "Customer",
-    type: "info",
-    timestamp: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
-    read: true,
-  },
-];
+import { notificationApi } from "../services/api";
 
 const NotificationContext = createContext(null);
 
 export function NotificationProvider({ children }) {
   const [notifications, setNotifications] = useState(() => {
     const saved = localStorage.getItem("fdms-notifications");
-    return saved ? JSON.parse(saved) : SEED_NOTIFICATIONS;
+    return saved ? JSON.parse(saved) : [];
   });
+  const [loading, setLoading] = useState(true);
+
+  // Load from MongoDB Atlas on mount
+  const fetchNotifications = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await notificationApi.getNotifications();
+      if (res && Array.isArray(res.data) && res.data.length > 0) {
+        const normalized = res.data.map((n) => ({
+          id: n._id || n.id,
+          mongoId: n._id,
+          title: n.title,
+          message: n.message,
+          category: n.category || "general",
+          role: n.role || "All",
+          type: n.type || "info",
+          orderId: n.orderId || "",
+          timestamp: n.createdAt || new Date().toISOString(),
+          read: Boolean(n.read),
+        }));
+        setNotifications(normalized);
+      }
+    } catch (err) {
+      console.warn("[Notifications] Backend API fetch error:", err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem("fdms-notifications", JSON.stringify(notifications));
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    if (notifications.length > 0) {
+      localStorage.setItem("fdms-notifications", JSON.stringify(notifications));
+    }
   }, [notifications]);
 
-  const addNotification = useCallback(({ title, message, category = "general", role = "All", type = "info", orderId }) => {
-    const newNotif = {
-      id: Date.now() + Math.floor(Math.random() * 1000),
-      title,
-      message,
-      category,
-      role, // "Customer", "Manager", or "All"
-      type, // "info", "success", "warning", "danger"
-      orderId,
-      timestamp: new Date().toISOString(),
-      read: false,
-    };
-    setNotifications((prev) => [newNotif, ...prev.slice(0, 49)]); // keep latest 50
-    return newNotif;
-  }, []);
+  const addNotification = useCallback(
+    async ({ title, message, category = "general", role = "All", type = "info", orderId }) => {
+      const tempId = Date.now() + Math.floor(Math.random() * 1000);
+      const newNotif = {
+        id: tempId,
+        title,
+        message,
+        category,
+        role, // "Customer", "Depot Manager", "Driver", "Admin", or "All"
+        type, // "info", "success", "warning", "danger"
+        orderId: orderId || "",
+        timestamp: new Date().toISOString(),
+        read: false,
+      };
+
+      try {
+        const res = await notificationApi.createNotification({ title, message, category, role, type, orderId });
+        if (res?.data?._id) {
+          newNotif.id = res.data._id;
+          newNotif.mongoId = res.data._id;
+        }
+      } catch (e) {
+        console.warn("[Notifications] API createNotification error:", e.message);
+      }
+
+      setNotifications((prev) => [newNotif, ...prev.slice(0, 49)]);
+      return newNotif;
+    },
+    []
+  );
 
   const markAsRead = useCallback((id) => {
     setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+      prev.map((n) => {
+        if (n.id === id || n.mongoId === id) {
+          notificationApi.markAsRead(n.mongoId || id).catch(() => {});
+          return { ...n, read: true };
+        }
+        return n;
+      })
     );
   }, []);
 
   const markAllAsRead = useCallback((roleFilter = "All") => {
+    notificationApi.markAllAsRead(roleFilter).catch(() => {});
     setNotifications((prev) =>
       prev.map((n) => {
         if (roleFilter === "All" || n.role === "All" || n.role === roleFilter) {
@@ -114,14 +128,16 @@ export function NotificationProvider({ children }) {
   const value = useMemo(
     () => ({
       notifications,
+      loading,
       addNotification,
       markAsRead,
       markAllAsRead,
       clearNotifications,
       getUnreadCount,
       getNotificationsForRole,
+      reloadNotifications: fetchNotifications,
     }),
-    [notifications, addNotification, markAsRead, markAllAsRead, clearNotifications, getUnreadCount, getNotificationsForRole]
+    [notifications, loading, addNotification, markAsRead, markAllAsRead, clearNotifications, getUnreadCount, getNotificationsForRole, fetchNotifications]
   );
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;

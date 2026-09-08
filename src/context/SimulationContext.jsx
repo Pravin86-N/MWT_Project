@@ -6,11 +6,8 @@ const SimulationContext = createContext(null);
 
 export function SimulationProvider({ children }) {
   const [isSimulating, setIsSimulating] = useState(false);
-  const [notifications, setNotifications] = useState([
-    { id: 1, text: "Depot operational. 4 active fuel tankers on radar.", time: "10:00 AM", type: "info" },
-    { id: 2, text: "Order FD-260801-001 delivered to Chennai Steel Works.", time: "11:15 AM", type: "success" },
-  ]);
-  const [unreadCount, setUnreadCount] = useState(2);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const { orders, advanceStatus } = useOrders();
   const { lowStockWarnings } = useInventory();
@@ -40,7 +37,7 @@ export function SimulationProvider({ children }) {
 
     const interval = setInterval(() => {
       // Find orders that can advance
-      const activeOrders = orders.filter((o) => o.status !== "Delivered" && o.status !== "Cancelled");
+      const activeOrders = orders.filter((o) => o.status !== "Delivered" && o.status !== "Cancelled" && o.status !== "Rejected");
       if (activeOrders.length > 0) {
         const randomOrder = activeOrders[Math.floor(Math.random() * activeOrders.length)];
         advanceStatus(randomOrder.id);
@@ -49,7 +46,7 @@ export function SimulationProvider({ children }) {
           "info"
         );
       }
-    }, 10000);
+    }, 12000);
 
     return () => clearInterval(interval);
   }, [isSimulating, orders, advanceStatus, addNotification]);

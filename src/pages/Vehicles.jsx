@@ -1,39 +1,32 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Truck, Plus, ShieldCheck, Wrench, Navigation, CheckCircle2, User, Fuel, Gauge } from "lucide-react";
-import { SEED_DRIVERS } from "../data/seed";
 import { useOrders } from "../context/OrdersContext";
 import { useLanguage } from "../context/LanguageContext";
-import { vehicleApi } from "../services/api";
-
-const INITIAL_FLEET_VEHICLES = [
-  { id: "v1", reg: "TN-01-AB-1234", type: "Fuel Tanker 12,000L", capacity: 12000, status: "Available", driver: "R. Selvam", odometer: 42150, lastService: "2026-07-15" },
-  { id: "v2", reg: "TN-07-CD-4321", type: "Heavy Tanker 15,000L", capacity: 15000, status: "In Transit", driver: "K. Arumugam", odometer: 68900, lastService: "2026-06-20" },
-  { id: "v3", reg: "TN-09-EF-5678", type: "Rigid Tanker 10,000L", capacity: 10000, status: "Available", driver: "M. Prabhu", odometer: 31400, lastService: "2026-08-01" },
-  { id: "v4", reg: "TN-11-GH-9012", type: "Compact Tanker 8,000L", capacity: 8000, status: "Maintenance", driver: "Unassigned", odometer: 94200, lastService: "2026-05-10" },
-];
+import { vehicleApi, driverApi } from "../services/api";
 
 export default function Vehicles() {
   const { t } = useLanguage();
   const { orders } = useOrders();
 
-  const [vehicles, setVehicles] = useState(() => {
-    const saved = localStorage.getItem("fdms-vehicles");
-    return saved ? JSON.parse(saved) : INITIAL_FLEET_VEHICLES;
-  });
+  const [vehicles, setVehicles] = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [reg, setReg] = useState("");
   const [type, setType] = useState("Fuel Tanker 12,000L");
   const [capacity, setCapacity] = useState(12000);
   const [assignedDriver, setAssignedDriver] = useState("Unassigned");
 
-  // Load live vehicles from backend API on mount
+  // Load live vehicles and drivers from backend API on mount
   useEffect(() => {
     let mounted = true;
-    vehicleApi
-      .getVehicles()
-      .then((res) => {
-        if (mounted && res.data && res.data.length > 0) {
-          const normalized = res.data.map((v, idx) => ({
+    setLoading(true);
+
+    Promise.allSettled([vehicleApi.getVehicles(), driverApi.getDrivers()])
+      .then(([vehRes, drvRes]) => {
+        if (!mounted) return;
+        if (vehRes.status === "fulfilled" && vehRes.value?.data) {
+          const normalized = vehRes.value.data.map((v, idx) => ({
             id: v._id || `v-${idx + 1}`,
             mongoId: v._id,
             reg: v.vehicleNumber || v.reg || v.vehicle || `TN-01-FL-${idx + 1000}`,
@@ -50,19 +43,21 @@ export default function Vehicles() {
           }));
           setVehicles(normalized);
         }
+        if (drvRes.status === "fulfilled" && drvRes.value?.data) {
+          setDrivers(drvRes.value.data);
+        }
       })
       .catch((err) => {
-        console.warn("[Vehicles] Backend API unavailable, using local vehicles:", err.message);
+        console.warn("[Vehicles] Backend API error:", err.message);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
       });
 
     return () => {
       mounted = false;
     };
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem("fdms-vehicles", JSON.stringify(vehicles));
-  }, [vehicles]);
 
   // Derive live vehicle statuses and assigned drivers dynamically from active orders
   const dynamicVehicles = useMemo(() => {
@@ -181,8 +176,8 @@ export default function Vehicles() {
             <span>Assign Operating Driver</span>
             <select value={assignedDriver} onChange={(e) => setAssignedDriver(e.target.value)}>
               <option value="Unassigned">Unassigned</option>
-              {SEED_DRIVERS.map((d) => (
-                <option key={d.id} value={d.name}>{d.name}</option>
+              {drivers.map((d) => (
+                <option key={d._id || d.id} value={d.name}>{d.name} {d.onDuty ? "(On Duty)" : "(Off Duty)"}</option>
               ))}
             </select>
           </label>
@@ -193,8 +188,17 @@ export default function Vehicles() {
       </section>
 
       {/* Fleet Vehicles Grid */}
-      <section className="cards-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "20px" }}>
-        {dynamicVehicles.map((v) => {
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "var(--text-dim)" }}>
+          Loading fleet vehicles from database...
+        </div>
+      ) : dynamicVehicles.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "var(--text-dim)" }}>
+          No vehicles in fleet. Register your first tanker using the form above.
+        </div>
+      ) : (
+        <section className="cards-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "20px" }}>
+          {dynamicVehicles.map((v) => {
           const getStatusBadge = () => {
             if (v.status === "In Transit") return <span className="pill status-intransit" style={{ fontSize: "11px", fontWeight: "800" }}>🚛 IN TRANSIT</span>;
             if (v.status === "Maintenance") return <span className="pill status-cancelled" style={{ fontSize: "11px", fontWeight: "800" }}>🔧 MAINTENANCE</span>;
@@ -259,6 +263,7 @@ export default function Vehicles() {
           );
         })}
       </section>
+      )}
     </div>
   );
 }

@@ -21,7 +21,6 @@ import {
   Maximize2,
   Compass,
 } from "lucide-react";
-import { SEED_FLEET_TELEMETRY } from "../data/seed";
 import { useOrders } from "../context/OrdersContext";
 import { useNotifications } from "../context/NotificationContext";
 import { vehicleApi } from "../services/api";
@@ -132,6 +131,7 @@ export default function FleetMap() {
   const { addNotification } = useNotifications();
 
   // State
+  const [rawVehicles, setRawVehicles] = useState([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState("v-1");
   const [sosActive, setSosActive] = useState(false);
   const [reroutedToast, setReroutedToast] = useState("");
@@ -153,11 +153,13 @@ export default function FleetMap() {
       .getVehicles()
       .then((res) => {
         if (mounted && res.data && res.data.length > 0) {
+          setRawVehicles(res.data);
           const apiPositions = {};
           res.data.forEach((v, idx) => {
             const id = v._id || `v-${idx + 1}`;
             if (v.latitude && v.longitude) {
               apiPositions[id] = { lat: v.latitude, lng: v.longitude, routeIdx: 0, progress: 0 };
+              apiPositions[`v-${idx + 1}`] = { lat: v.latitude, lng: v.longitude, routeIdx: 0, progress: 0 };
             }
           });
           if (Object.keys(apiPositions).length > 0) {
@@ -166,14 +168,14 @@ export default function FleetMap() {
         }
       })
       .catch((err) => {
-        console.warn("[FleetMap] Backend API vehicles unavailable, using default telemetry:", err.message);
+        console.warn("[FleetMap] Backend API vehicles unavailable:", err.message);
       });
     return () => {
       mounted = false;
     };
   }, []);
 
-  // Map Fleet Vehicles mapping
+  // Map Fleet Vehicles dynamically from MongoDB fleet
   const vehicles = useMemo(() => {
     const vehicleOrderMap = new Map();
     orders.forEach((o) => {
@@ -184,21 +186,29 @@ export default function FleetMap() {
       }
     });
 
-    return SEED_FLEET_TELEMETRY.map((v) => {
-      const o = vehicleOrderMap.get(v.vehicle);
+    if (rawVehicles.length === 0) {
+      return [];
+    }
+
+    return rawVehicles.map((v, idx) => {
+      const vKey = `v-${idx + 1}`;
+      const vehId = v._id || vKey;
+      const vehReg = v.vehicleNumber || v.reg || `TN-01-FL-${idx + 1000}`;
+      const o = vehicleOrderMap.get(vehReg);
+
       let mappedStatus = "Returning"; // Default Blue
       let speed = 0;
       let cargo = "Empty Tanker";
       let dest = "Chennai Main Depot";
-      let driver = v.driver;
+      let driver = v.driverName || v.driver || "Unassigned";
       let phone = "+91 98765 43210";
       let eta = "18 mins";
 
       if (o) {
-        driver = o.driver || v.driver;
-        if (o.status === "InTransit") {
+        driver = o.driver || driver;
+        if (o.status === "InTransit" || o.status === "In Transit") {
           mappedStatus = "Moving"; // Green
-          speed = liveSpeeds[v.id] || v.speed || 68;
+          speed = liveSpeeds[vKey] || liveSpeeds[vehId] || v.speed || 68;
           cargo = `${o.qty.toLocaleString()} L ${o.fuelCode}`;
           dest = `${o.customer} (${o.city})`;
           eta = "28 mins";
@@ -211,10 +221,17 @@ export default function FleetMap() {
         }
       }
 
-      const pos = livePositions[v.id] || { lat: v.lat || 13.0827, lng: v.lng || 80.2707 };
+      const defaultDepot = DEPOT_LOCATIONS[idx % DEPOT_LOCATIONS.length];
+      const pos = livePositions[vKey] || livePositions[vehId] || {
+        lat: v.latitude || defaultDepot.lat,
+        lng: v.longitude || defaultDepot.lng,
+      };
 
       return {
-        ...v,
+        id: vehId,
+        key: vKey,
+        vehicle: vehReg,
+        type: v.type || "Fuel Tanker 12,000L",
         driver,
         phone,
         status: mappedStatus,
@@ -232,10 +249,10 @@ export default function FleetMap() {
         lastGpsUpdate: "Just now",
       };
     });
-  }, [orders, liveSpeeds, livePositions]);
+  }, [rawVehicles, orders, liveSpeeds, livePositions]);
 
   const selectedVehicle = useMemo(() => {
-    return vehicles.find((v) => v.id === selectedVehicleId || v.vehicle === selectedVehicleId) || vehicles[0];
+    return vehicles.find((v) => v.id === selectedVehicleId || v.vehicle === selectedVehicleId || v.key === selectedVehicleId) || vehicles[0];
   }, [vehicles, selectedVehicleId]);
 
   // LIVE MOVEMENT SIMULATION USING setInterval (TRUCK MOVEMENT SIMULATION)

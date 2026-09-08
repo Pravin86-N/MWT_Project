@@ -35,10 +35,11 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response Interceptor: Handle response errors gracefully
+// Response Interceptor: Handle response errors gracefully with retry logic
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const config = error.config;
     // If token is invalid or expired, handle session cleanup if 401
     if (error.response && error.response.status === 401) {
       const isAuthRoute =
@@ -47,7 +48,21 @@ api.interceptors.response.use(
       if (!isAuthRoute) {
         console.warn("[API] Authentication expired or invalid token");
       }
+      return Promise.reject(error);
     }
+
+    // Auto-retry for idempotent requests (GET) or network disconnects up to 2 times
+    if (
+      config &&
+      (!config.method || config.method.toLowerCase() === "get") &&
+      (!config.__retryCount || config.__retryCount < 2)
+    ) {
+      config.__retryCount = (config.__retryCount || 0) + 1;
+      const delayMs = config.__retryCount * 800;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return api(config);
+    }
+
     return Promise.reject(error);
   }
 );
@@ -59,6 +74,32 @@ export const authApi = {
   // Login user and return JWT token
   login: async (email, password) => {
     const response = await api.post("/auth/login", { email, password });
+    const data = response.data;
+    if (data.token) {
+      localStorage.setItem("fdms-token", data.token);
+    }
+    return data;
+  },
+
+  // Google OAuth Login
+  googleLogin: async (googleData) => {
+    const response = await api.post("/auth/google", googleData);
+    const data = response.data;
+    if (data.token) {
+      localStorage.setItem("fdms-token", data.token);
+    }
+    return data;
+  },
+
+  // Send Mobile OTP
+  sendOtp: async (mobile) => {
+    const response = await api.post("/auth/send-otp", { mobile });
+    return response.data;
+  },
+
+  // Verify Mobile OTP
+  verifyOtp: async (mobile, otp) => {
+    const response = await api.post("/auth/verify-otp", { mobile, otp });
     const data = response.data;
     if (data.token) {
       localStorage.setItem("fdms-token", data.token);
@@ -85,6 +126,21 @@ export const authApi = {
   // Get all users (Admin / Depot Manager)
   getAllUsers: async () => {
     const response = await api.get("/auth/users");
+    return response.data;
+  },
+
+  // Update profile
+  updateProfile: async (profileData) => {
+    const response = await api.put("/auth/profile", profileData);
+    if (response.data?.token) {
+      localStorage.setItem("fdms-token", response.data.token);
+    }
+    return response.data;
+  },
+
+  // Change Password
+  changePassword: async (currentPassword, newPassword) => {
+    const response = await api.post("/auth/change-password", { currentPassword, newPassword });
     return response.data;
   },
 
@@ -121,8 +177,25 @@ export const registrationApi = {
     return response.data;
   },
 
-  // Approve or reject customer registration
+  // Approve customer registration (PUT /api/registrations/:id/approve)
+  approveRegistration: async (id) => {
+    const response = await api.put(`/registrations/${id}/approve`);
+    return response.data;
+  },
+
+  // Reject customer registration with reason (PUT /api/registrations/:id/reject)
+  rejectRegistration: async (id, rejectionReason = "") => {
+    const response = await api.put(`/registrations/${id}/reject`, { rejectionReason });
+    return response.data;
+  },
+
+  // Approve or reject customer registration (legacy patch)
   updateStatus: async (id, status, reviewNotes = "") => {
+    if (status === "Approved") {
+      return registrationApi.approveRegistration(id);
+    } else if (status === "Rejected") {
+      return registrationApi.rejectRegistration(id, reviewNotes);
+    }
     const response = await api.patch(`/registrations/${id}/status`, {
       status,
       reviewNotes,
@@ -133,6 +206,48 @@ export const registrationApi = {
   // Delete customer registration record
   deleteRegistration: async (id) => {
     const response = await api.delete(`/registrations/${id}`);
+    return response.data;
+  },
+};
+
+/* ==========================================================================
+   2.1 ENTERPRISE CUSTOMER CRM SERVICES
+   ========================================================================== */
+export const customerApi = {
+  // Fetch all customers from MongoDB
+  getCustomers: async (params = {}) => {
+    const response = await api.get("/customers", { params });
+    return response.data;
+  },
+
+  // Get customer by ID, regId, or name
+  getCustomerById: async (id) => {
+    const response = await api.get(`/customers/${id}`);
+    return response.data;
+  },
+
+  // Create or register new customer
+  createCustomer: async (formData) => {
+    const headers =
+      formData instanceof FormData
+        ? { "Content-Type": "multipart/form-data" }
+        : { "Content-Type": "application/json" };
+    const response = await api.post("/customers", formData, { headers });
+    return response.data;
+  },
+
+  // Approve or reject customer status
+  updateStatus: async (id, status, reviewNotes = "") => {
+    const response = await api.patch(`/customers/${id}/status`, {
+      status,
+      reviewNotes,
+    });
+    return response.data;
+  },
+
+  // Delete customer record
+  deleteCustomer: async (id) => {
+    const response = await api.delete(`/customers/${id}`);
     return response.data;
   },
 };
@@ -162,6 +277,12 @@ export const orderApi = {
   // Get single order by ID or orderNumber
   getOrderById: async (id) => {
     const response = await api.get(`/orders/${id}`);
+    return response.data;
+  },
+
+  // Get order invoice & billing details
+  getOrderInvoice: async (id) => {
+    const response = await api.get(`/orders/${id}/invoice`);
     return response.data;
   },
 
@@ -316,15 +437,17 @@ export const vehicleApi = {
    6. DASHBOARD STATISTICS SERVICES
    ========================================================================== */
 export const dashboardApi = {
-  // Aggregate real-time statistics across Orders, Inventory, and Vehicles
+  // Aggregate real-time statistics across Customers, Orders, Inventory, Drivers, and Vehicles
   getDashboardStats: async () => {
     try {
-      const [ordersRes, inventoryRes, vehiclesRes, alertsRes] =
+      const [ordersRes, inventoryRes, vehiclesRes, alertsRes, customersRes, driversRes] =
         await Promise.allSettled([
           orderApi.getOrders(),
           inventoryApi.getInventory(),
           vehicleApi.getVehicles(),
           inventoryApi.getLowStockAlerts(),
+          customerApi.getCustomers(),
+          driverApi.getDrivers(),
         ]);
 
       const orders =
@@ -343,6 +466,14 @@ export const dashboardApi = {
         alertsRes.status === "fulfilled" && alertsRes.value?.alerts
           ? alertsRes.value.alerts
           : [];
+      const customers =
+        customersRes.status === "fulfilled" && customersRes.value?.data
+          ? customersRes.value.data
+          : [];
+      const drivers =
+        driversRes.status === "fulfilled" && driversRes.value?.data
+          ? driversRes.value.data
+          : [];
 
       const litresToday = orders.reduce((sum, o) => sum + (o.qty || o.quantity || 0), 0);
       const revenue = orders
@@ -356,7 +487,9 @@ export const dashboardApi = {
           o.status === "Assigned"
       ).length;
       const completedDeliveries = orders.filter((o) => o.status === "Delivered").length;
-      const pendingApprovals = orders.filter((o) => o.status === "Pending").length;
+      const pendingApprovals = orders.filter(
+        (o) => o.status === "Pending" || o.status === "Pending Approval"
+      ).length;
 
       const totalCapacity = inventory.reduce((sum, t) => sum + (t.capacity || 0), 0);
       const totalStock = inventory.reduce(
@@ -369,6 +502,13 @@ export const dashboardApi = {
       ).length;
       const inTransitVehicles = vehicles.filter(
         (v) => v.status === "In Transit" || v.status === "InTransit" || v.status === "Delivering"
+      ).length;
+
+      const activeDrivers = drivers.filter(
+        (d) => d.onDuty || d.status === "On Duty" || d.status === "Available"
+      ).length;
+      const pendingDeliveries = orders.filter((o) =>
+        ["Pending", "Pending Approval", "Approved", "Assigned", "In Transit", "InTransit", "Dispatched"].includes(o.status)
       ).length;
 
       return {
@@ -397,12 +537,113 @@ export const dashboardApi = {
             inTransit: inTransitVehicles,
             fleet: vehicles,
           },
+          customers: {
+            total: customers.length,
+            list: customers,
+          },
+          drivers: {
+            total: drivers.length,
+            active: activeDrivers,
+            list: drivers,
+          },
+          // Specific KPIs required for Admin Dashboard & Depot Manager Dashboard
+          kpis: {
+            totalCustomers: customers.length,
+            totalOrders: orders.length,
+            pendingOrders: pendingApprovals,
+            completedOrders: completedDeliveries,
+            totalDrivers: drivers.length,
+            totalVehicles: vehicles.length,
+            depotOrders: orders.length,
+            pendingDeliveries,
+            activeDrivers,
+            availableFuelStock: totalStock,
+          },
         },
       };
     } catch (error) {
       console.error("[DashboardApi] Error fetching aggregated statistics:", error);
       throw error;
     }
+  },
+};
+
+/* ==========================================================================
+   7. DRIVER FLEET WORKFORCE SERVICES
+   ========================================================================== */
+export const driverApi = {
+  getDrivers: async (params = {}) => {
+    const response = await api.get("/drivers", { params });
+    return response.data;
+  },
+  getDriverById: async (id) => {
+    const response = await api.get(`/drivers/${id}`);
+    return response.data;
+  },
+  createDriver: async (driverData) => {
+    const response = await api.post("/drivers", driverData);
+    return response.data;
+  },
+  updateDriver: async (id, updateData) => {
+    const response = await api.put(`/drivers/${id}`, updateData);
+    return response.data;
+  },
+  deleteDriver: async (id) => {
+    const response = await api.delete(`/drivers/${id}`);
+    return response.data;
+  },
+};
+
+/* ==========================================================================
+   8. REAL-TIME NOTIFICATION SERVICES
+   ========================================================================== */
+export const notificationApi = {
+  getNotifications: async (params = {}) => {
+    const response = await api.get("/notifications", { params });
+    return response.data;
+  },
+  markAsRead: async (id) => {
+    const response = await api.patch(`/notifications/${id}/read`);
+    return response.data;
+  },
+  markAllAsRead: async (role = "All") => {
+    const response = await api.patch("/notifications/read-all", { role });
+    return response.data;
+  },
+  createNotification: async (data) => {
+    const response = await api.post("/notifications", data);
+    return response.data;
+  },
+};
+
+/* ==========================================================================
+   9. REPORTS & ANALYTICS SERVICES
+   ========================================================================== */
+export const reportApi = {
+  // Fetch general reports suite
+  getReports: async (params = {}) => {
+    const response = await api.get("/reports", { params });
+    return response.data;
+  },
+  // Fetch reports dashboard with tables and KPIs
+  getDashboardReports: async () => {
+    const response = await api.get("/reports/dashboard");
+    return response.data;
+  },
+  // Fetch summary metrics
+  getReportsSummary: async () => {
+    const response = await api.get("/reports/summary");
+    return response.data;
+  },
+};
+
+/* ==========================================================================
+   10. AUDIT TRAIL & ACTIVITY LOG SERVICES
+   ========================================================================== */
+export const activityApi = {
+  getActivities: async (params = {}) => {
+    const response = await api.get("/activities", { params });
+    return response.data;
   },
 };
 

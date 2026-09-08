@@ -2,6 +2,8 @@ const Order = require('../models/Order');
 const Tank = require('../models/Tank');
 const FuelPricing = require('../models/FuelPricing');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
+const { logActivity } = require('./activityController');
 
 // Helper to calculate pricing
 const calculateOrderPricing = async (fuelType, quantity) => {
@@ -113,6 +115,32 @@ const createOrder = async (req, res, next) => {
       deliveryCharge: pricing.deliveryCharge,
       total: pricing.total,
       notes: notes || '',
+    });
+
+    // Create Notification for Depot Manager & Admin
+    try {
+      await Notification.create({
+        title: 'New Fuel Order Received',
+        message: `New bulk fuel request #${order.orderNumber} from ${order.customer} for ${order.quantity} L ${order.fuelType} awaiting manager approval.`,
+        category: 'request',
+        role: 'Depot Manager',
+        type: 'info',
+        orderId: order.orderNumber,
+      });
+    } catch (notifErr) {
+      console.warn('[Notification Error]:', notifErr.message);
+    }
+
+    // Log Activity
+    logActivity({
+      action: 'Order Created',
+      userId: custId,
+      userName: customerName,
+      userRole: req.user?.role || 'Customer',
+      entityId: order.orderNumber,
+      details: `${customerName} created order #${order.orderNumber} for ${order.quantity} L of ${order.fuelType}`,
+      ipAddress: req.ip || req.connection?.remoteAddress || '',
+      metadata: { fuelType: order.fuelType, quantity: order.quantity, total: order.total },
     });
 
     res.status(201).json({
@@ -294,6 +322,31 @@ const approveOrder = async (req, res, next) => {
     order.approvedAt = new Date();
     await order.save();
 
+    // Create Notification for Customer & Driver
+    try {
+      await Notification.create({
+        title: 'Order Approved',
+        message: `Your fuel order #${order.orderNumber} (${order.quantity.toLocaleString()} L ${order.fuelType}) has been approved by the depot manager.`,
+        category: 'order',
+        role: 'Customer',
+        type: 'success',
+        orderId: order.orderNumber,
+      });
+    } catch (notifErr) {
+      console.warn('[Notification Error]:', notifErr.message);
+    }
+
+    // Log Activity
+    logActivity({
+      action: 'Order Approved',
+      userId: req.user?._id || null,
+      userName: req.user?.name || 'Depot Manager',
+      userRole: req.user?.role || 'Depot Manager',
+      entityId: order.orderNumber,
+      details: `Order #${order.orderNumber} (${order.customer}) approved and inventory reserved (${order.quantity} L ${order.fuelType})`,
+      ipAddress: req.ip || req.connection?.remoteAddress || '',
+    });
+
     res.status(200).json({
       success: true,
       message: `Order ${order.orderNumber} approved successfully and moved to the delivery queue.`,
@@ -343,6 +396,17 @@ const rejectOrder = async (req, res, next) => {
     order.rejectionReason = finalReason;
     await order.save();
 
+    // Log Activity
+    logActivity({
+      action: 'Order Rejected',
+      userId: req.user?._id || null,
+      userName: req.user?.name || 'Depot Manager',
+      userRole: req.user?.role || 'Depot Manager',
+      entityId: order.orderNumber,
+      details: `Order #${order.orderNumber} was rejected. Reason: ${finalReason}`,
+      ipAddress: req.ip || req.connection?.remoteAddress || '',
+    });
+
     res.status(200).json({
       success: true,
       message: `Order ${order.orderNumber} rejected. Reason: ${finalReason}`,
@@ -359,7 +423,8 @@ const rejectOrder = async (req, res, next) => {
 const assignOrder = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { driver, vehicle } = req.body;
+    const driver = req.body.driver || req.body.driverName;
+    const vehicle = req.body.vehicle || req.body.vehicleNumber;
 
     if (!driver || !vehicle) {
       return res.status(400).json({
@@ -385,6 +450,40 @@ const assignOrder = async (req, res, next) => {
     order.status = 'Assigned';
     order.assignedAt = new Date();
     await order.save();
+
+    // Create Notification for Driver and Customer
+    try {
+      await Notification.create({
+        title: 'Driver Assigned',
+        message: `Driver ${driver} and Tanker ${vehicle} assigned to Order #${order.orderNumber} (${order.customer}).`,
+        category: 'dispatch',
+        role: 'Driver',
+        type: 'info',
+        orderId: order.orderNumber,
+      });
+      await Notification.create({
+        title: 'Driver Assigned to Order',
+        message: `Driver ${driver} has been assigned to deliver your Order #${order.orderNumber}.`,
+        category: 'dispatch',
+        role: 'Customer',
+        type: 'info',
+        orderId: order.orderNumber,
+      });
+    } catch (notifErr) {
+      console.warn('[Notification Error]:', notifErr.message);
+    }
+
+    // Log Activity
+    logActivity({
+      action: 'Driver Assigned',
+      userId: req.user?._id || null,
+      userName: req.user?.name || 'Depot Manager',
+      userRole: req.user?.role || 'Depot Manager',
+      entityId: order.orderNumber,
+      details: `Driver ${driver} and Tanker ${vehicle} assigned to Order #${order.orderNumber} (${order.customer})`,
+      ipAddress: req.ip || req.connection?.remoteAddress || '',
+      metadata: { driver, vehicle },
+    });
 
     res.status(200).json({
       success: true,
@@ -484,8 +583,79 @@ const updateOrderStatus = async (req, res, next) => {
     order.status = nextStatus;
     if (driver) order.driver = driver;
     if (vehicle) order.vehicle = vehicle;
+    if (req.body.customerSignature) order.customerSignature = req.body.customerSignature;
+    if (req.body.deliveryProof) order.deliveryProof = req.body.deliveryProof;
+    if (req.body.reachedAt) order.reachedAt = req.body.reachedAt;
 
     await order.save();
+
+    // Create automated notifications on delivery start / delivered
+    try {
+      if (nextStatus === 'In Transit' || nextStatus === 'InTransit' || nextStatus === 'Dispatched') {
+        await Notification.create({
+          title: 'Delivery Started',
+          message: `Tanker dispatched! Order #${order.orderNumber} is now IN TRANSIT to ${order.deliveryAddress}.`,
+          category: 'delivery',
+          role: 'Customer',
+          type: 'info',
+          orderId: order.orderNumber,
+        });
+      } else if (nextStatus === 'Delivered') {
+        await Notification.create({
+          title: 'Delivery Delivered',
+          message: `Order #${order.orderNumber} (${order.quantity.toLocaleString()} L ${order.fuelType}) was successfully DELIVERED to ${order.deliveryAddress}.`,
+          category: 'delivery',
+          role: 'Customer',
+          type: 'success',
+          orderId: order.orderNumber,
+        });
+        await Notification.create({
+          title: 'Delivery Completed',
+          message: `Driver ${order.driver} completed delivery for Order #${order.orderNumber} at ${order.customer}.`,
+          category: 'delivery',
+          role: 'Depot Manager',
+          type: 'success',
+          orderId: order.orderNumber,
+        });
+      }
+    } catch (notifErr) {
+      console.warn('[Notification Error]:', notifErr.message);
+    }
+
+    // Log Activity for status transitions
+    if (nextStatus === 'In Transit' || nextStatus === 'InTransit' || nextStatus === 'Dispatched') {
+      logActivity({
+        action: 'Delivery Started',
+        userId: req.user?._id || null,
+        userName: req.user?.name || order.driver || 'Driver',
+        userRole: req.user?.role || 'Driver',
+        entityId: order.orderNumber,
+        details: `Delivery started for Order #${order.orderNumber}. Tanker en-route to ${order.deliveryAddress}. Driver: ${order.driver}`,
+        ipAddress: req.ip || req.connection?.remoteAddress || '',
+        metadata: { driver: order.driver, vehicle: order.vehicle },
+      });
+    } else if (nextStatus === 'Delivered') {
+      logActivity({
+        action: 'Delivery Completed',
+        userId: req.user?._id || null,
+        userName: req.user?.name || order.driver || 'Driver',
+        userRole: req.user?.role || 'Driver',
+        entityId: order.orderNumber,
+        details: `Order #${order.orderNumber} delivered to ${order.customer} at ${order.deliveryAddress}. Inventory deducted.`,
+        ipAddress: req.ip || req.connection?.remoteAddress || '',
+        metadata: { driver: order.driver, vehicle: order.vehicle, quantity: order.quantity },
+      });
+    } else if (nextStatus === 'Approved') {
+      logActivity({
+        action: 'Order Approved',
+        userId: req.user?._id || null,
+        userName: req.user?.name || 'Depot Manager',
+        userRole: req.user?.role || 'Depot Manager',
+        entityId: order.orderNumber,
+        details: `Order #${order.orderNumber} approved.`,
+        ipAddress: req.ip || req.connection?.remoteAddress || '',
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -566,12 +736,82 @@ const deleteOrder = async (req, res, next) => {
   }
 };
 
+// @desc    Get order tax invoice & billing summary
+// @route   GET /api/orders/:id/invoice
+// @access  Public / Protected
+const getOrderInvoice = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    let order;
+
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      order = await Order.findById(id);
+    } else {
+      order = await Order.findOne({ orderNumber: id });
+    }
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const fuelCode = (order.fuelType || order.fuelCode || 'DSL').toUpperCase();
+    const pricing = await calculateOrderPricing(fuelCode, order.quantity || order.qty);
+    const pricingDoc = await FuelPricing.findOne({ code: fuelCode });
+
+    const invoice = {
+      invoiceNumber: `INV-${order.orderNumber}`,
+      date: order.createdAt || new Date(),
+      orderNumber: order.orderNumber,
+      customer: {
+        name: order.customer,
+        deliverySite: order.deliveryAddress || order.site,
+        city: order.city,
+        paymentTerms: 'Corporate NET 30 Days',
+      },
+      dispatch: {
+        driver: order.driver || 'Unassigned',
+        vehicle: order.vehicle || 'Unassigned',
+        status: order.status,
+        slot: order.slot,
+        depot: 'Central Depot Logistics Vault #1',
+        deliveredAt: order.deliveredAt || null,
+        reachedAt: order.reachedAt || null,
+        customerSignature: order.customerSignature || '',
+      },
+      item: {
+        fuelCode,
+        fuelName: pricingDoc ? pricingDoc.name : (fuelCode === 'DSL' ? 'High Speed Diesel' : fuelCode === 'PTL' ? 'Super Petrol' : fuelCode),
+        quantity: order.quantity || order.qty,
+        unitPrice: pricingDoc ? pricingDoc.price : 92.4,
+        subtotal: order.subtotal || pricing.subtotal,
+        taxRate: pricingDoc ? pricingDoc.taxRate : 0.18,
+        tax: order.tax || pricing.tax,
+        deliveryCharge: order.deliveryCharge || pricing.deliveryCharge,
+        total: order.total || pricing.total,
+      },
+      taxDetails: {
+        depotGstin: '33AAACF1234H1Z8',
+        companyName: 'FDMS DEPOT LOGISTICS LTD.',
+        address: '100 GST Road, Guindy Industrial Estate, Chennai - 600032',
+      },
+    };
+
+    res.status(200).json({
+      success: true,
+      data: invoice,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createOrder,
   getOrders,
   getPendingOrders,
   getDeliveryQueue,
   getOrderById,
+  getOrderInvoice,
   approveOrder,
   rejectOrder,
   assignOrder,

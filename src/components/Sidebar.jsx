@@ -28,15 +28,19 @@ export default function Sidebar({ isCollapsed, toggleSidebar }) {
   const user = state.user;
 
   const isCustomer = user?.role === "Customer";
+  const isDriver = user?.role === "Driver";
 
   const mainLinks = isCustomer
+    ? [{ to: "/customer-portal", label: "My Fuel Portal", icon: Building2 }]
+    : isDriver
     ? [
-        { to: "/customer-portal", label: "My Fuel Portal", icon: Building2 },
+        { to: "/driver-portal", label: "My Deliveries", icon: Truck },
+        { to: "/fleet-map", label: "Fleet Radar", icon: Navigation },
       ]
     : [
         { to: "/dashboard", key: "nav_dashboard", icon: LayoutDashboard },
         { to: "/pending-requests", label: "Pending Requests", icon: Clock },
-        { to: "/registrations", label: "Customer Registrations", icon: FileCheck },
+        { to: "/applications", label: "Customer Approvals", icon: FileCheck },
         { to: "/orders", key: "nav_orders", icon: ClipboardList },
         { to: "/fleet-map", key: "nav_fleetMap", icon: Navigation },
         { to: "/inventory", key: "nav_inventory", icon: Database },
@@ -47,14 +51,16 @@ export default function Sidebar({ isCollapsed, toggleSidebar }) {
       ];
 
   const secondaryLinks = [
-    ...(!isCustomer ? [{ to: "/customer-portal", label: "Customer View", icon: Building2 }] : []),
+    ...(!isCustomer && !isDriver ? [{ to: "/customer-portal", label: "Customer View", icon: Building2 }] : []),
     { to: "/settings", key: "nav_settings", icon: SettingsIcon },
   ];
+
+  const brandLink = isCustomer ? "/customer-portal" : isDriver ? "/driver-portal" : "/dashboard";
 
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <NavLink to={isCustomer ? "/customer-portal" : "/dashboard"} className="sidebar-brand">
+        <NavLink to={brandLink} className="sidebar-brand">
           <div className="sidebar-brand-icon">
             <Fuel size={22} />
           </div>

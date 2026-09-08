@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
-import { SEED_DEPOT_TANKS } from "../data/seed";
 import { inventoryApi } from "../services/api";
 
 const InventoryContext = createContext(null);
@@ -7,59 +6,66 @@ const InventoryContext = createContext(null);
 export function InventoryProvider({ children }) {
   const [tanks, setTanks] = useState(() => {
     const saved = localStorage.getItem("fdms-depot-tanks");
-    return saved ? JSON.parse(saved) : SEED_DEPOT_TANKS;
+    return saved ? JSON.parse(saved) : [];
   });
+  const [loading, setLoading] = useState(true);
 
   // Load live inventory from backend API
-  useEffect(() => {
-    let mounted = true;
-    inventoryApi
-      .getInventory()
-      .then((res) => {
-        if (mounted && res.data && res.data.length > 0) {
-          const normalized = res.data.map((t) => ({
-            id: t.tankId || t._id,
-            mongoId: t._id,
-            fuelCode: t.fuelType || t.fuelCode,
-            name: t.name || `Tank - ${t.fuelType || t.fuelCode}`,
-            capacity: t.capacity,
-            current: t.currentStock != null ? t.currentStock : t.current,
-            threshold: t.minimumThreshold != null ? t.minimumThreshold : t.threshold,
-            reserved: t.reserved || 0,
-            temp: t.temp || 25.0,
-            pressure: t.pressure || 1.0,
-            lastRefill: t.lastRefill || new Date().toISOString().split("T")[0],
-          }));
-          setTanks(normalized);
-        }
-      })
-      .catch((err) => {
-        console.warn("[Inventory] Backend API unavailable, continuing with local tanks:", err.message);
-      });
-
-    return () => {
-      mounted = false;
-    };
+  const fetchTanks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await inventoryApi.getInventory();
+      if (res && Array.isArray(res.data) && res.data.length > 0) {
+        const normalized = res.data.map((t) => ({
+          id: t.tankId || t._id,
+          mongoId: t._id,
+          fuelCode: t.fuelType || t.fuelCode || "DSL",
+          fuelType: t.fuelType || t.fuelCode || "DSL",
+          name: t.name || `Tank - ${t.fuelType || t.fuelCode}`,
+          capacity: t.capacity || 50000,
+          current: t.currentStock != null ? t.currentStock : (t.current != null ? t.current : 0),
+          currentStock: t.currentStock != null ? t.currentStock : (t.current != null ? t.current : 0),
+          threshold: t.minimumThreshold != null ? t.minimumThreshold : (t.threshold != null ? t.threshold : 10000),
+          minimumThreshold: t.minimumThreshold != null ? t.minimumThreshold : (t.threshold != null ? t.threshold : 10000),
+          reserved: t.reserved || 0,
+          temp: t.temp || 24.5,
+          pressure: t.pressure || 1.02,
+          lastRefill: t.lastRefill || new Date().toISOString().split("T")[0],
+        }));
+        setTanks(normalized);
+      }
+    } catch (err) {
+      console.warn("[Inventory] Backend API fetch error:", err.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("fdms-depot-tanks", JSON.stringify(tanks));
+    fetchTanks();
+  }, [fetchTanks]);
+
+  useEffect(() => {
+    if (tanks.length > 0) {
+      localStorage.setItem("fdms-depot-tanks", JSON.stringify(tanks));
+    }
   }, [tanks]);
 
-  const refillTank = useCallback((tankId, amount = 10000) => {
-    inventoryApi
-      .refillInventory({ tankId, amount, quantity: amount })
-      .catch((err) => {
-        console.warn("[Inventory] API refill error, updating locally:", err.message);
-      });
+  const refillTank = useCallback(async (tankId, amount = 10000) => {
+    try {
+      await inventoryApi.refillInventory({ tankId, amount, quantity: amount });
+    } catch (err) {
+      console.warn("[Inventory] API refill error:", err.message);
+    }
 
     setTanks((prev) =>
       prev.map((t) => {
-        if (t.id === tankId || t.fuelCode === tankId) {
+        if (t.id === tankId || t.fuelCode === tankId || t.mongoId === tankId) {
           const newCurrent = Math.min(t.capacity, t.current + amount);
           return {
             ...t,
             current: newCurrent,
+            currentStock: newCurrent,
             lastRefill: new Date().toISOString().split("T")[0],
           };
         }
@@ -69,7 +75,7 @@ export function InventoryProvider({ children }) {
   }, []);
 
   const hasSufficientStock = useCallback((fuelCode, amount) => {
-    const tank = tanks.find((t) => t.fuelCode === fuelCode);
+    const tank = tanks.find((t) => t.fuelCode === fuelCode || t.fuelType === fuelCode);
     if (!tank) return false;
     const available = tank.current - (tank.reserved || 0);
     return available >= amount;
@@ -80,7 +86,7 @@ export function InventoryProvider({ children }) {
     setTanks((prev) => {
       let updated = false;
       const nextTanks = prev.map((t) => {
-        if (t.fuelCode === fuelCode) {
+        if (t.fuelCode === fuelCode || t.fuelType === fuelCode) {
           const reserved = t.reserved || 0;
           const available = t.current - reserved;
           if (available < amount) {
@@ -105,7 +111,7 @@ export function InventoryProvider({ children }) {
   const releaseReservation = useCallback((fuelCode, amount) => {
     setTanks((prev) =>
       prev.map((t) => {
-        if (t.fuelCode === fuelCode) {
+        if (t.fuelCode === fuelCode || t.fuelType === fuelCode) {
           const reserved = Math.max(0, (t.reserved || 0) - amount);
           return { ...t, reserved };
         }
@@ -117,10 +123,10 @@ export function InventoryProvider({ children }) {
   const deductStock = useCallback((fuelCode, amount) => {
     setTanks((prev) =>
       prev.map((t) => {
-        if (t.fuelCode === fuelCode) {
+        if (t.fuelCode === fuelCode || t.fuelType === fuelCode) {
           const newCurrent = Math.max(0, t.current - amount);
           const newReserved = Math.max(0, (t.reserved || 0) - amount);
-          return { ...t, current: newCurrent, reserved: newReserved };
+          return { ...t, current: newCurrent, currentStock: newCurrent, reserved: newReserved };
         }
         return t;
       })
@@ -128,9 +134,8 @@ export function InventoryProvider({ children }) {
   }, []);
 
   const resetTanks = useCallback(() => {
-    localStorage.removeItem("fdms-depot-tanks");
-    setTanks(SEED_DEPOT_TANKS);
-  }, []);
+    fetchTanks();
+  }, [fetchTanks]);
 
   // Compute total volume & low stock warnings
   const lowStockWarnings = useMemo(() => {
@@ -140,15 +145,17 @@ export function InventoryProvider({ children }) {
   const value = useMemo(
     () => ({
       tanks,
+      loading,
       refillTank,
       deductStock,
       reserveStock,
       releaseReservation,
       hasSufficientStock,
       resetTanks,
+      reloadInventory: fetchTanks,
       lowStockWarnings,
     }),
-    [tanks, refillTank, deductStock, reserveStock, releaseReservation, hasSufficientStock, resetTanks, lowStockWarnings]
+    [tanks, loading, refillTank, deductStock, reserveStock, releaseReservation, hasSufficientStock, resetTanks, fetchTanks, lowStockWarnings]
   );
 
   return <InventoryContext.Provider value={value}>{children}</InventoryContext.Provider>;

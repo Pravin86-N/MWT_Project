@@ -12,6 +12,7 @@ const Driver = require('./models/Driver');
 const Vehicle = require('./models/Vehicle');
 const CustomerRegistration = require('./models/CustomerRegistration');
 const FuelPricing = require('./models/FuelPricing');
+const Notification = require('./models/Notification');
 
 const users = [
   {
@@ -49,6 +50,14 @@ const users = [
     creditLimit: 300000,
     creditUsed: 52400,
     phone: '+91 94431 87654',
+  },
+  {
+    name: 'R. Rangarajan',
+    email: 'driver@fdms.com',
+    password: 'driver123',
+    role: 'Driver',
+    city: 'Chennai',
+    phone: '+91 98400 11223',
   },
 ];
 
@@ -369,6 +378,52 @@ const registrations = [
   },
 ];
 
+const notifications = [
+  {
+    title: 'New Fuel Request',
+    message: 'New bulk fuel request #FD-260804-009 from Sunrise Construction awaiting manager approval.',
+    category: 'request',
+    role: 'Depot Manager',
+    type: 'info',
+    orderId: 'FD-260804-009',
+    read: false,
+  },
+  {
+    title: 'Fuel Dispatched',
+    message: 'Order #FD-260802-014 for Om Sri Hospital is DISPATCHED. Driver V. Vasanth en-route.',
+    category: 'dispatch',
+    role: 'Customer',
+    type: 'success',
+    orderId: 'FD-260802-014',
+    read: false,
+  },
+  {
+    title: 'Driver Assigned',
+    message: 'Driver R. Rangarajan and Tanker TN-01-AB-1234 assigned to deliver Order #FD-260801-001.',
+    category: 'dispatch',
+    role: 'Driver',
+    type: 'info',
+    orderId: 'FD-260801-001',
+    read: true,
+  },
+  {
+    title: 'Low Inventory Alert',
+    message: 'Depot Tank Kerosene Auxiliary Vault #4 current stock level is below safety threshold (4,200 L).',
+    category: 'inventory',
+    role: 'Depot Manager',
+    type: 'warning',
+    read: false,
+  },
+  {
+    title: 'Registration Approved',
+    message: 'Your corporate account for Madurai Textile Mills Ltd has been approved! You can now place fuel orders.',
+    category: 'registration',
+    role: 'Customer',
+    type: 'success',
+    read: true,
+  },
+];
+
 const importData = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URI);
@@ -382,6 +437,7 @@ const importData = async () => {
     await Vehicle.deleteMany();
     await CustomerRegistration.deleteMany();
     await FuelPricing.deleteMany();
+    await Notification.deleteMany();
 
     // Insert seeds
     for (const u of users) {
@@ -393,6 +449,7 @@ const importData = async () => {
     await Vehicle.insertMany(vehicles);
     await Order.insertMany(orders);
     await CustomerRegistration.insertMany(registrations);
+    await Notification.insertMany(notifications);
 
     console.log('[Seeder] Data Imported Successfully!');
     process.exit(0);
@@ -414,6 +471,7 @@ const destroyData = async () => {
     await Vehicle.deleteMany();
     await CustomerRegistration.deleteMany();
     await FuelPricing.deleteMany();
+    await Notification.deleteMany();
 
     console.log('[Seeder] Data Destroyed Successfully!');
     process.exit(0);

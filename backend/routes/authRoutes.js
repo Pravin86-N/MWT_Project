@@ -3,19 +3,27 @@ const router = express.Router();
 const {
   register,
   login,
+  googleAuth,
+  sendMobileOtp,
+  verifyMobileOtp,
   getMe,
   getAllUsers,
   updateProfile,
+  changePassword,
 } = require('../controllers/authController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
 // Public routes
 router.post('/register', register);
 router.post('/login', login);
+router.post('/google', googleAuth);
+router.post('/send-otp', sendMobileOtp);
+router.post('/verify-otp', verifyMobileOtp);
 
-// Protected routes (Any authenticated user: Admin, Depot Manager, Customer)
+// Protected routes (Any authenticated user)
 router.get('/me', protect, getMe);
 router.put('/profile', protect, updateProfile);
+router.post('/change-password', protect, changePassword);
 
 // Role-based authorized routes
 // Admin-only route

@@ -15,7 +15,7 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       match: [
-        /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
+        /^\S+@\S+$/,
         'Please provide a valid email address',
       ],
     },
@@ -63,13 +63,16 @@ const userSchema = new mongoose.Schema(
 );
 
 // Encrypt password using bcryptjs before saving
-userSchema.pre('save', async function (next) {
+userSchema.pre('save', async function () {
   if (!this.isModified('password')) {
-    return next ? next() : undefined;
+    return;
+  }
+  // If already hashed with bcrypt, do not re-hash
+  if (this.password.startsWith('$2a$') || this.password.startsWith('$2b$')) {
+    return;
   }
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
-  if (next) next();
 });
 
 // Compare entered password with hashed password in database

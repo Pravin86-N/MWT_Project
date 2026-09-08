@@ -1,49 +1,71 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { X, Truck, UserCheck, AlertTriangle, CheckCircle2, ShieldCheck } from "lucide-react";
-import { SEED_DRIVERS } from "../data/seed";
 import { useNotifications } from "../context/NotificationContext";
-
-const FLEET_VEHICLES = [
-  { id: "v1", reg: "TN-01-AB-1234", type: "Fuel Tanker 12,000L", status: "Available" },
-  { id: "v2", reg: "TN-07-CD-4321", type: "Heavy Tanker 15,000L", status: "Available" },
-  { id: "v3", reg: "TN-09-EF-5678", type: "Rigid Tanker 10,000L", status: "Available" },
-  { id: "v4", reg: "TN-11-GH-9012", type: "Compact Tanker 8,000L", status: "Available" },
-];
+import { driverApi, vehicleApi } from "../services/api";
 
 export default function DispatchModal({ order, onClose, onConfirm }) {
   const { addNotification } = useNotifications();
-  const [drivers] = useState(() => {
-    const saved = localStorage.getItem("fdms-drivers");
-    return saved ? JSON.parse(saved) : SEED_DRIVERS;
-  });
-
-  // Filter ONLY available / on-duty drivers
-  const availableDrivers = useMemo(
-    () => drivers.filter((d) => d.onDuty),
-    [drivers]
-  );
+  const [drivers, setDrivers] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [selectedDriver, setSelectedDriver] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState("");
   const [validationError, setValidationError] = useState("");
 
-  // Pre-select if order already has an assigned driver or vehicle
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+
+    Promise.allSettled([driverApi.getDrivers(), vehicleApi.getVehicles()])
+      .then(([drvRes, vehRes]) => {
+        if (!mounted) return;
+        if (drvRes.status === "fulfilled" && drvRes.value?.data) {
+          setDrivers(drvRes.value.data);
+        }
+        if (vehRes.status === "fulfilled" && vehRes.value?.data) {
+          setVehicles(vehRes.value.data);
+        }
+      })
+      .catch((err) => {
+        console.warn("[DispatchModal] Failed to fetch drivers/vehicles:", err.message);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Filter ONLY available / on-duty drivers
+  const availableDrivers = useMemo(
+    () => drivers.filter((d) => d.onDuty || d.status === "On Duty" || d.status === "Available"),
+    [drivers]
+  );
+
+  const availableVehicles = useMemo(
+    () => vehicles.filter((v) => v.status === "Available" || (order && order.vehicle === (v.vehicleNumber || v.reg))),
+    [vehicles, order]
+  );
+
+  // Pre-select driver and vehicle
   useEffect(() => {
     if (order) {
       if (order.driver && order.driver !== "Unassigned") {
-        const found = availableDrivers.find((d) => d.name === order.driver);
-        if (found) {
-          setSelectedDriver(found.name);
-          setSelectedVehicle(found.vehicle || FLEET_VEHICLES[0].reg);
-          return;
-        }
-      }
-      if (availableDrivers.length > 0) {
+        setSelectedDriver(order.driver);
+      } else if (availableDrivers.length > 0 && !selectedDriver) {
         setSelectedDriver(availableDrivers[0].name);
-        setSelectedVehicle(availableDrivers[0].vehicle || FLEET_VEHICLES[0].reg);
+      }
+
+      if (order.vehicle && order.vehicle !== "—" && order.vehicle !== "Unassigned") {
+        setSelectedVehicle(order.vehicle);
+      } else if (availableVehicles.length > 0 && !selectedVehicle) {
+        setSelectedVehicle(availableVehicles[0].vehicleNumber || availableVehicles[0].reg);
       }
     }
-  }, [order, availableDrivers]);
+  }, [order, availableDrivers, availableVehicles, selectedDriver, selectedVehicle]);
 
   const handleDriverChange = (driverName) => {
     setSelectedDriver(driverName);
@@ -154,8 +176,8 @@ export default function DispatchModal({ order, onClose, onConfirm }) {
           ) : (
             <select value={selectedDriver} onChange={(e) => handleDriverChange(e.target.value)} required>
               {availableDrivers.map((d) => (
-                <option key={d.id} value={d.name}>
-                  {d.name} ({d.phone}) — {d.vehicle || "No default truck"}
+                <option key={d._id || d.id} value={d.name}>
+                  {d.name} ({d.phone || "On Duty"}) — {d.vehicle || "No default truck"}
                 </option>
               ))}
             </select>
@@ -165,13 +187,22 @@ export default function DispatchModal({ order, onClose, onConfirm }) {
         {/* Vehicle Selection Field */}
         <label className="field" style={{ marginTop: "12px" }}>
           <span>Select Available Delivery Tanker Vehicle</span>
-          <select value={selectedVehicle} onChange={(e) => setSelectedVehicle(e.target.value)} required>
-            {FLEET_VEHICLES.map((v) => (
-              <option key={v.id} value={v.reg}>
-                {v.reg} — {v.type} ({v.status})
-              </option>
-            ))}
-          </select>
+          {availableVehicles.length === 0 ? (
+            <div style={{ padding: "10px", background: "rgba(255, 0, 85, 0.1)", color: "var(--red)", borderRadius: "8px", fontSize: "13px" }}>
+              ⚠️ No vehicles are currently available. Please register or free up a vehicle.
+            </div>
+          ) : (
+            <select value={selectedVehicle} onChange={(e) => setSelectedVehicle(e.target.value)} required>
+              {availableVehicles.map((v) => {
+                const regNum = v.vehicleNumber || v.reg;
+                return (
+                  <option key={v._id || v.id} value={regNum}>
+                    {regNum} — {v.type} ({v.status})
+                  </option>
+                );
+              })}
+            </select>
+          )}
         </label>
 
         <div style={{ background: "rgba(255, 183, 3, 0.08)", border: "1px solid rgba(255, 183, 3, 0.25)", padding: "12px", borderRadius: "12px", fontSize: "12px", color: "var(--amber)", marginTop: "14px" }}>

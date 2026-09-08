@@ -17,13 +17,20 @@ const driverRoutes = require('./routes/driverRoutes');
 const fleetRoutes = require('./routes/fleetRoutes');
 const registrationRoutes = require('./routes/registrationRoutes');
 const pricingRoutes = require('./routes/pricingRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const reportRoutes = require('./routes/reportRoutes');
+const activityRoutes = require('./routes/activityRoutes');
+const customerRoutes = require('./routes/customerRoutes');
 
 const app = express();
 
 // Enable Cross-Origin Resource Sharing
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || '*',
+    origin: [
+      "http://localhost:5173",
+      "http://localhost:5174"
+    ],
     credentials: true,
   })
 );
@@ -58,6 +65,7 @@ app.get('/', (req, res) => {
       drivers: '/api/drivers',
       fleet: '/api/fleet',
       registrations: '/api/registrations',
+      customers: '/api/customers',
       pricing: '/api/pricing',
     },
   });
@@ -71,8 +79,11 @@ app.use('/api/drivers', driverRoutes);
 app.use('/api/fleet', fleetRoutes);
 app.use('/api/vehicles', fleetRoutes);
 app.use('/api/registrations', registrationRoutes);
-app.use('/api/customers', registrationRoutes);
+app.use('/api/customers', customerRoutes);
 app.use('/api/pricing', pricingRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/activities', activityRoutes);
 
 // Error handling middleware
 app.use(notFound);

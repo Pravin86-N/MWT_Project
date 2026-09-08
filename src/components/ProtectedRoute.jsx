@@ -9,8 +9,8 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (adminOnly && state.user?.role === "Customer") {
-    return <Navigate to="/customer-portal" replace />;
+  if (adminOnly && (state.user?.role === "Customer" || state.user?.role === "Driver")) {
+    return <Navigate to={state.user?.role === "Customer" ? "/customer-portal" : "/driver-portal"} replace />;
   }
 
   return children;

@@ -1,25 +1,37 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Plus, Phone, ShieldCheck, UserCheck, Star, Award, ClipboardList, Clock, Truck } from "lucide-react";
-import { SEED_DRIVERS } from "../data/seed";
 import { useOrders } from "../context/OrdersContext";
 import { useLanguage } from "../context/LanguageContext";
+import { driverApi } from "../services/api";
 
 export default function Drivers() {
   const { t } = useLanguage();
   const { orders } = useOrders();
 
-  const [drivers, setDrivers] = useState(() => {
-    const saved = localStorage.getItem("fdms-drivers");
-    return saved ? JSON.parse(saved) : SEED_DRIVERS;
-  });
+  const [drivers, setDrivers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [license, setLicense] = useState("");
 
+  const fetchDrivers = async () => {
+    try {
+      setLoading(true);
+      const res = await driverApi.getDrivers();
+      if (res?.data) {
+        setDrivers(res.data);
+      }
+    } catch (err) {
+      console.warn("[Drivers] Backend API error:", err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    localStorage.setItem("fdms-drivers", JSON.stringify(drivers));
-  }, [drivers]);
+    fetchDrivers();
+  }, []);
 
   // Derive active assigned orders per driver from OrdersContext
   const driverActiveOrders = useMemo(() => {
@@ -33,25 +45,53 @@ export default function Drivers() {
     return map;
   }, [orders]);
 
-  const toggleDuty = useCallback((id) => {
-    setDrivers((prev) => prev.map((d) => (d.id === id ? { ...d, onDuty: !d.onDuty } : d)));
+  const toggleDuty = useCallback(async (driver) => {
+    const newOnDuty = !driver.onDuty;
+    const targetId = driver._id || driver.id;
+    // Optimistic UI update
+    setDrivers((prev) =>
+      prev.map((d) => ((d._id || d.id) === targetId ? { ...d, onDuty: newOnDuty } : d))
+    );
+
+    try {
+      await driverApi.updateDriver(targetId, {
+        onDuty: newOnDuty,
+        status: newOnDuty ? "On Duty" : "Off Duty",
+      });
+    } catch (err) {
+      console.error("[Drivers] Failed to update duty status on server:", err.message);
+      // Rollback on failure
+      setDrivers((prev) =>
+        prev.map((d) => ((d._id || d.id) === targetId ? { ...d, onDuty: !newOnDuty } : d))
+      );
+    }
   }, []);
 
-  const addDriver = (e) => {
+  const addDriver = async (e) => {
     e.preventDefault();
     if (!name.trim()) return;
-    setDrivers((prev) => [
-      {
-        id: Date.now(),
-        name,
-        phone: phone || "+91 98765 43210",
-        license: license || `TN-${Math.floor(1000 + Math.random() * 9000)}-2024`,
-        onDuty: true,
-        deliveries: 0,
-        rating: 4.9,
-      },
-      ...prev,
-    ]);
+
+    const payload = {
+      name: name.trim(),
+      phone: phone || "+91 98765 43210",
+      license: license || `TN-${Math.floor(1000 + Math.random() * 9000)}-2024`,
+      onDuty: true,
+      deliveries: 0,
+      rating: 4.9,
+    };
+
+    try {
+      const res = await driverApi.createDriver(payload);
+      if (res?.data) {
+        setDrivers((prev) => [res.data, ...prev]);
+      } else {
+        setDrivers((prev) => [{ ...payload, id: Date.now() }, ...prev]);
+      }
+    } catch (err) {
+      console.error("[Drivers] Failed to create driver:", err.message);
+      setDrivers((prev) => [{ ...payload, id: Date.now() }, ...prev]);
+    }
+
     setName("");
     setPhone("");
     setLicense("");
@@ -92,40 +132,49 @@ export default function Drivers() {
       </section>
 
       {/* Drivers Roster Cards Grid */}
-      <section className="cards-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "20px" }}>
-        {drivers.map((d) => {
-          const assignedOrders = driverActiveOrders[d.name] || [];
-          return (
-            <div key={d.id} className="panel driver-card" style={{ padding: "20px", borderRadius: "16px", border: "1px solid var(--line)", background: "var(--panel)" }}>
-              {/* Header & Availability Toggle */}
-              <div className="driver-card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                <div>
-                  <div className="cell-strong" style={{ fontSize: "16px", fontWeight: "800", color: "var(--text)" }}>
-                    {d.name}
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "var(--text-dim)" }}>
+          Loading driver roster from database...
+        </div>
+      ) : drivers.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "var(--text-dim)" }}>
+          No drivers registered yet. Onboard a qualified driver using the form above.
+        </div>
+      ) : (
+        <section className="cards-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "20px" }}>
+          {drivers.map((d) => {
+            const assignedOrders = driverActiveOrders[d.name] || [];
+            return (
+              <div key={d._id || d.id} className="panel driver-card" style={{ padding: "20px", borderRadius: "16px", border: "1px solid var(--line)", background: "var(--panel)" }}>
+                {/* Header & Availability Toggle */}
+                <div className="driver-card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                  <div>
+                    <div className="cell-strong" style={{ fontSize: "16px", fontWeight: "800", color: "var(--text)" }}>
+                      {d.name}
+                    </div>
+                    <small style={{ color: "var(--text-dim)", fontSize: "12px" }}>
+                      Lic: {d.license || `TN-${Math.floor(1000 + Math.random() * 9000)}-2024`}
+                    </small>
                   </div>
-                  <small style={{ color: "var(--text-dim)", fontSize: "12px" }}>
-                    Lic: {d.license || `TN-${Math.floor(1000 + Math.random() * 9000)}-2024`}
-                  </small>
-                </div>
 
-                {/* Duty Availability Toggle Button */}
-                <button
-                  className={"pill toggle" + (d.onDuty ? "" : " off")}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: "20px",
-                    fontWeight: "800",
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    border: "none",
-                    background: d.onDuty ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.08)",
-                    color: d.onDuty ? "var(--green-neon)" : "var(--text-dim)",
-                  }}
-                  onClick={() => toggleDuty(d.id)}
-                >
-                  {d.onDuty ? "🟢 ON DUTY" : "⚪ OFF DUTY"}
-                </button>
-              </div>
+                  {/* Duty Availability Toggle Button */}
+                  <button
+                    className={"pill toggle" + (d.onDuty ? "" : " off")}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: "20px",
+                      fontWeight: "800",
+                      fontSize: "12px",
+                      cursor: "pointer",
+                      border: "none",
+                      background: d.onDuty ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.08)",
+                      color: d.onDuty ? "var(--green-neon)" : "var(--text-dim)",
+                    }}
+                    onClick={() => toggleDuty(d)}
+                  >
+                    {d.onDuty ? "🟢 ON DUTY" : "⚪ OFF DUTY"}
+                  </button>
+                </div>
 
               {/* Driver Details */}
               <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "13px", color: "var(--text-dim)", marginBottom: "14px" }}>
@@ -168,6 +217,7 @@ export default function Drivers() {
           );
         })}
       </section>
+      )}
     </div>
   );
 }

@@ -34,6 +34,7 @@ import { STATUS_FLOW } from "../data/seed";
 import { useAuth } from "../context/AuthContext";
 import { useOrders } from "../context/OrdersContext";
 import { useLanguage } from "../context/LanguageContext";
+import { useNotifications } from "../context/NotificationContext";
 import NewOrderModal from "../components/NewOrderModal";
 import InvoiceModal from "../components/InvoiceModal";
 import StatusPill from "../components/StatusPill";
@@ -120,9 +121,75 @@ export default function CustomerPortal() {
   );
 
   const totalLitresOrdered = useMemo(
-    () => myOrders.reduce((sum, o) => sum + (o.status !== "Cancelled" && o.status !== "Rejected" ? o.qty : 0), 0),
+    () => myOrders.reduce((sum, o) => sum + (o.status !== "Cancelled" && o.status !== "Rejected" ? (o.qty || o.quantity || 0) : 0), 0),
     [myOrders]
   );
+
+  const totalSpending = useMemo(
+    () => myOrders.filter((o) => o.status !== "Cancelled" && o.status !== "Rejected").reduce((sum, o) => sum + (o.total || ((o.qty || 100) * 89.5)), 0),
+    [myOrders]
+  );
+
+  const { notifications, markAsRead } = useNotifications();
+  const customerNotifications = useMemo(() => {
+    return notifications.filter((n) => n.role === "Customer" || n.role === "All");
+  }, [notifications]);
+
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwStatus, setPwStatus] = useState(null);
+  const [pwLoading, setPwLoading] = useState(false);
+  const { changePassword, updateProfile } = useAuth();
+
+  const [profileName, setProfileName] = useState(user?.name || "");
+  const [profilePhone, setProfilePhone] = useState(user?.phone || "");
+  const [profileSite, setProfileSite] = useState(user?.site || "");
+  const [profileCity, setProfileCity] = useState(user?.city || "");
+  const [profileStatus, setProfileStatus] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setProfileName(user.name || "");
+      setProfilePhone(user.phone || "");
+      setProfileSite(user.site || "");
+      setProfileCity(user.city || "");
+    }
+  }, [user]);
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    setProfileLoading(true);
+    setProfileStatus(null);
+    const res = await updateProfile({
+      name: profileName,
+      phone: profilePhone,
+      site: profileSite,
+      city: profileCity,
+    });
+    setProfileLoading(false);
+    if (res.ok) {
+      setProfileStatus({ type: "success", text: "Company profile updated successfully!" });
+    } else {
+      setProfileStatus({ type: "error", text: res.error || "Failed to update profile." });
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (!pwCurrent || !pwNew) return;
+    setPwLoading(true);
+    setPwStatus(null);
+    const res = await changePassword(pwCurrent, pwNew);
+    setPwLoading(false);
+    if (res.ok) {
+      setPwStatus({ type: "success", text: "Password changed successfully!" });
+      setPwCurrent("");
+      setPwNew("");
+    } else {
+      setPwStatus({ type: "error", text: res.error || "Failed to change password." });
+    }
+  };
 
   const latestActiveOrder = activeDeliveries[0] || myOrders[0];
 
@@ -229,25 +296,91 @@ export default function CustomerPortal() {
       </div>
 
       {/* =========================================================================
+          PRIMARY CUSTOMER DASHBOARD CARDS
+          ========================================================================= */}
+      <div className="kpi-grid-4">
+        <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--blue)" }}>
+          <div className="kpi-card-head">
+            <span className="kpi-card-lbl">Active Orders</span>
+            <div className="kpi-icon-badge">
+              <Truck size={18} />
+            </div>
+          </div>
+          <div className="kpi-val">{activeDeliveries.length} Active</div>
+          <div className="kpi-footer">
+            <span className="trend-pill up">Live Telemetry</span>
+            <span style={{ color: "var(--text-dim)" }}>In transit / queue</span>
+          </div>
+        </div>
+
+        <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--green-neon)" }}>
+          <div className="kpi-card-head">
+            <span className="kpi-card-lbl">Delivered Orders</span>
+            <div className="kpi-icon-badge">
+              <CheckCircle2 size={18} />
+            </div>
+          </div>
+          <div className="kpi-val">{completedDeliveries.length} Delivered</div>
+          <div className="kpi-footer">
+            <span className="trend-pill up">100% Fulfilled</span>
+            <span style={{ color: "var(--text-dim)" }}>Tax receipts ready</span>
+          </div>
+        </div>
+
+        <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--orange)" }}>
+          <div className="kpi-card-head">
+            <span className="kpi-card-lbl">Total Fuel Ordered</span>
+            <div className="kpi-icon-badge">
+              <Fuel size={18} />
+            </div>
+          </div>
+          <div className="kpi-val">{totalLitresOrdered.toLocaleString()} L</div>
+          <div className="kpi-footer">
+            <span className="trend-pill up">Bulk Certified</span>
+            <span style={{ color: "var(--text-dim)" }}>Density calibrated</span>
+          </div>
+        </div>
+
+        <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--amber)" }}>
+          <div className="kpi-card-head">
+            <span className="kpi-card-lbl">Total Spending</span>
+            <div className="kpi-icon-badge">
+              <CreditCard size={18} />
+            </div>
+          </div>
+          <div className="kpi-val">₹{Math.round(totalSpending).toLocaleString("en-IN")}</div>
+          <div className="kpi-footer">
+            <span className="trend-pill up">Corporate Net-30</span>
+            <span style={{ color: "var(--text-dim)" }}>All time</span>
+          </div>
+        </div>
+      </div>
+
+      {/* =========================================================================
           2. QUICK ACTION CARDS (AMAZON / SWIGGY FAST ACTION HUB)
           ========================================================================= */}
       <div>
         <h3 className="section-title-sm">Quick Self-Service Actions</h3>
         <div className="cust-quick-grid">
-          {/* Card 1: Request Fuel */}
+          {/* Card 1: New Order */}
           <div
-            className="cust-action-card card-orange"
+            className={`cust-action-card card-orange ${!isVerified ? "disabled" : ""}`}
             onClick={() => {
+              if (!isVerified) {
+                alert("Account verification pending. Orders can only be placed after admin approval.");
+                return;
+              }
               setPrefillData(null);
               setModalOpen(true);
             }}
+            style={{ opacity: !isVerified ? 0.7 : 1, cursor: !isVerified ? "not-allowed" : "pointer" }}
           >
             <div className="action-icon-circle bg-orange">
               <Plus size={26} />
             </div>
             <div className="action-text">
-              <strong>Request Fuel</strong>
-              <small>Order bulk fuel in 60 seconds</small>
+              <strong>New Order</strong>
+              <small>{isVerified ? "Place bulk fuel order in 60s" : "KYC Verification Pending"}</small>
             </div>
             <ArrowRight size={18} className="arrow-icon" />
           </div>
@@ -421,11 +554,11 @@ export default function CustomerPortal() {
       )}
 
       {/* =========================================================================
-          4. ACTIVE & COMPLETED ORDERS (MODERN GLASS CARDS INSTEAD OF PLAIN TABLES)
+          4. ORDERS, INVOICES, NOTIFICATIONS & PROFILE TABS
           ========================================================================= */}
       <div className="cust-orders-section">
-        <div className="orders-section-header">
-          <div className="tabs-header">
+        <div className="orders-section-header" style={{ flexWrap: "wrap", gap: "12px" }}>
+          <div className="tabs-header" style={{ flexWrap: "wrap", gap: "6px" }}>
             <button
               className={`tab-btn ${activeTab === "active" ? "active" : ""}`}
               onClick={() => setActiveTab("active")}
@@ -438,77 +571,307 @@ export default function CustomerPortal() {
             >
               Order History ({completedDeliveries.length})
             </button>
+            <button
+              className={`tab-btn ${activeTab === "invoices" ? "active" : ""}`}
+              onClick={() => setActiveTab("invoices")}
+            >
+              Invoice History
+            </button>
+            <button
+              className={`tab-btn ${activeTab === "notifications" ? "active" : ""}`}
+              onClick={() => setActiveTab("notifications")}
+            >
+              Notification Center ({customerNotifications.filter((n) => !n.read).length})
+            </button>
+            <button
+              className={`tab-btn ${activeTab === "profile" ? "active" : ""}`}
+              onClick={() => setActiveTab("profile")}
+            >
+              Profile Settings
+            </button>
           </div>
 
           <button
             className="btn-primary btn-sm"
+            style={{ background: "var(--orange)", borderColor: "var(--orange)", fontWeight: 700 }}
             onClick={() => {
+              if (!isVerified) {
+                alert("Account verification pending. Orders can only be placed after admin approval.");
+                return;
+              }
               setPrefillData(null);
               setModalOpen(true);
             }}
           >
-            + Request Fuel
+            + New Order
           </button>
         </div>
 
-        {/* Order Cards Grid */}
-        <div className="order-cards-grid">
-          {(activeTab === "active" ? activeDeliveries : completedDeliveries).map((o) => (
-            <div key={o.id} className="glass-order-card">
-              <div className="card-top-row">
-                <div>
-                  <span className="order-num-tag">{o.orderNumber}</span>
-                  <div style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "2px" }}>
-                    Requested: {o.createdAt || "Aug 28, 2026"}
-                  </div>
-                </div>
-                <StatusPill status={o.status} />
+        {/* TAB 1 & 2: Active Orders / History */}
+        {(activeTab === "active" || activeTab === "history") && (
+          <div className="order-cards-grid">
+            {(activeTab === "active" ? activeDeliveries : completedDeliveries).length === 0 ? (
+              <div className="loading" style={{ padding: "30px", textAlign: "center", color: "var(--text-dim)" }}>
+                No orders in this view. Click <strong>+ New Order</strong> to place a fuel delivery request.
               </div>
+            ) : (
+              (activeTab === "active" ? activeDeliveries : completedDeliveries).map((o) => (
+                <div key={o.id} className="glass-order-card">
+                  <div className="card-top-row">
+                    <div>
+                      <span className="order-num-tag">{o.orderNumber}</span>
+                      <div style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "2px" }}>
+                        Requested: {o.createdAt ? new Date(o.createdAt).toLocaleDateString() : "Aug 28, 2026"}
+                      </div>
+                    </div>
+                    <StatusPill status={o.status} />
+                  </div>
 
-              <div className="card-body-row">
-                <div className="fuel-detail-chip">
-                  <Fuel size={18} style={{ color: "var(--orange)" }} />
-                  <div>
-                    <strong style={{ fontSize: "16px" }}>{o.qty.toLocaleString()} Litres</strong>
-                    <div style={{ fontSize: "12px", color: "var(--text-dim)" }}>
-                      {o.fuelCode} ({o.fuelCode === "DSL" ? "Diesel" : "Petrol"})
+                  <div className="card-body-row">
+                    <div className="fuel-detail-chip">
+                      <Fuel size={18} style={{ color: "var(--orange)" }} />
+                      <div>
+                        <strong style={{ fontSize: "16px" }}>{(o.qty || o.quantity || 0).toLocaleString()} Litres</strong>
+                        <div style={{ fontSize: "12px", color: "var(--text-dim)" }}>
+                          {o.fuelCode || o.fuelType} ({o.fuelCode === "DSL" || o.fuelType === "DSL" ? "Diesel" : "Petrol"})
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="site-detail-chip">
+                      <MapPin size={16} style={{ color: "var(--blue)" }} />
+                      <span>{o.site || o.deliveryAddress} ({o.city})</span>
                     </div>
                   </div>
+
+                  {/* Action Buttons Footer */}
+                  <div className="card-footer-actions">
+                    <button
+                      className="btn-ghost-sm"
+                      onClick={() => setTrackingOrder(o)}
+                    >
+                      <Navigation size={14} style={{ color: "var(--blue)" }} /> Track Order
+                    </button>
+
+                    <button
+                      className="btn-ghost-sm"
+                      onClick={() => setInvoiceOrder(o)}
+                    >
+                      <FileText size={14} style={{ color: "var(--green)" }} /> Tax Invoice
+                    </button>
+
+                    <button
+                      className="btn-ghost-sm"
+                      onClick={() => handleOrderAgain(o)}
+                      style={{ color: "var(--amber)", fontWeight: 700 }}
+                    >
+                      <RotateCcw size={14} /> Order Again
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: Invoice History */}
+        {activeTab === "invoices" && (
+          <div className="invoices-cards-grid" style={{ marginTop: "16px" }}>
+            {myOrders.length === 0 ? (
+              <div className="loading" style={{ padding: "30px", textAlign: "center", color: "var(--text-dim)" }}>
+                No completed orders or tax invoices available yet.
+              </div>
+            ) : (
+              myOrders.map((o, idx) => (
+                <div key={o.id} className="invoice-download-card" style={{ background: "var(--panel)", padding: "16px 20px", borderRadius: "14px", border: "1px solid var(--line)" }}>
+                  <div className="inv-icon">
+                    <FileText size={24} style={{ color: "var(--green)" }} />
+                  </div>
+                  <div className="inv-details" style={{ flex: 1 }}>
+                    <strong style={{ fontSize: "14px", color: "var(--text)" }}>Tax Invoice #{o.orderNumber}</strong>
+                    <div style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "2px" }}>
+                      Fuel: {o.qty || o.quantity} L ({o.fuelCode || o.fuelType}) • Amount: <strong style={{ color: "var(--text)" }}>₹{Math.round(o.total || ((o.qty || 100) * 89.5)).toLocaleString("en-IN")}</strong>
+                    </div>
+                    <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>
+                      Site: {o.site || o.deliveryAddress} • Status: <span style={{ color: "var(--green-neon)", fontWeight: "700" }}>{o.status}</span>
+                    </div>
+                  </div>
+                  <button
+                    className="btn-primary btn-sm"
+                    style={{ background: "rgba(16, 185, 129, 0.15)", color: "var(--green-neon)", borderColor: "var(--green-neon)" }}
+                    onClick={() => setInvoiceOrder(o)}
+                  >
+                    <Download size={14} /> View / Print Tax Invoice
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* TAB 4: Notification Center */}
+        {activeTab === "notifications" && (
+          <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            {customerNotifications.length === 0 ? (
+              <div className="loading" style={{ padding: "30px", textAlign: "center", color: "var(--text-dim)" }}>
+                No notifications received yet.
+              </div>
+            ) : (
+              customerNotifications.map((n) => (
+                <div
+                  key={n.id}
+                  onClick={() => markAsRead(n.id)}
+                  style={{
+                    background: n.read ? "var(--panel)" : "rgba(255, 94, 0, 0.08)",
+                    border: n.read ? "1px solid var(--line)" : "1px solid var(--orange)",
+                    padding: "14px 18px",
+                    borderRadius: "12px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      {!n.read && <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--orange)" }}></span>}
+                      <strong style={{ fontSize: "14px", color: "var(--text)" }}>{n.title}</strong>
+                    </div>
+                    <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--text-dim)" }}>{n.message}</p>
+                    <small style={{ fontSize: "11px", color: "var(--text-dim)" }}>
+                      {n.timestamp ? new Date(n.timestamp).toLocaleString() : ""}
+                    </small>
+                  </div>
+                  {n.read ? (
+                    <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Read</span>
+                  ) : (
+                    <span className="pill" style={{ "--pill-color": "var(--orange)", fontSize: "11px" }}>New</span>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* TAB 5: Profile Settings & Change Password */}
+        {activeTab === "profile" && (
+          <div style={{ marginTop: "16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+            <div className="card portal-panel" style={{ padding: "20px" }}>
+              <h3 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: "700" }}>🏢 Company Profile Details</h3>
+              <form onSubmit={handleUpdateProfile} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <label className="field">
+                  <span>Company / Customer Name</span>
+                  <input
+                    type="text"
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className="field">
+                  <span>Contact Phone Number</span>
+                  <input
+                    type="text"
+                    value={profilePhone}
+                    onChange={(e) => setProfilePhone(e.target.value)}
+                    placeholder="+91 98401 23456"
+                    required
+                  />
+                </label>
+                <label className="field">
+                  <span>Delivery Discharge Site</span>
+                  <input
+                    type="text"
+                    value={profileSite}
+                    onChange={(e) => setProfileSite(e.target.value)}
+                    placeholder="Primary Factory Vault"
+                    required
+                  />
+                </label>
+                <label className="field">
+                  <span>Operating City</span>
+                  <input
+                    type="text"
+                    value={profileCity}
+                    onChange={(e) => setProfileCity(e.target.value)}
+                    placeholder="Chennai"
+                    required
+                  />
+                </label>
+
+                {/* Credit Limit Overview */}
+                <div style={{ background: "var(--panel-alt)", padding: "12px", borderRadius: "10px", marginTop: "4px", display: "flex", justifyContent: "space-between" }}>
+                  <div>
+                    <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>CREDIT LIMIT</span>
+                    <div style={{ color: "var(--green-neon)", fontWeight: "800", fontSize: "14px" }}>₹{creditLimit.toLocaleString("en-IN")}</div>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>USED CREDIT</span>
+                    <div style={{ color: "var(--amber)", fontWeight: "800", fontSize: "14px" }}>₹{creditUsed.toLocaleString("en-IN")}</div>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>AVAILABLE</span>
+                    <div style={{ color: "var(--blue)", fontWeight: "800", fontSize: "14px" }}>₹{availableCredit.toLocaleString("en-IN")}</div>
+                  </div>
                 </div>
 
-                <div className="site-detail-chip">
-                  <MapPin size={16} style={{ color: "var(--blue)" }} />
-                  <span>{o.site} ({o.city})</span>
-                </div>
-              </div>
-
-              {/* Action Buttons Footer */}
-              <div className="card-footer-actions">
-                <button
-                  className="btn-ghost-sm"
-                  onClick={() => setTrackingOrder(o)}
-                >
-                  <Navigation size={14} style={{ color: "var(--blue)" }} /> Track Order
-                </button>
+                {profileStatus && (
+                  <div style={{ color: profileStatus.type === "success" ? "var(--green-neon)" : "var(--red)", fontSize: "12px" }}>
+                    {profileStatus.text}
+                  </div>
+                )}
 
                 <button
-                  className="btn-ghost-sm"
-                  onClick={() => setInvoiceOrder(o)}
+                  type="submit"
+                  className="btn-primary"
+                  disabled={profileLoading}
+                  style={{ background: "var(--orange)", borderColor: "var(--orange)", fontWeight: "700", marginTop: "4px" }}
                 >
-                  <FileText size={14} style={{ color: "var(--green)" }} /> Tax Invoice
+                  {profileLoading ? "Saving Changes..." : "Save Profile Details"}
                 </button>
-
-                <button
-                  className="btn-ghost-sm"
-                  onClick={() => handleOrderAgain(o)}
-                  style={{ color: "var(--amber)", fontWeight: 700 }}
-                >
-                  <RotateCcw size={14} /> Order Again
-                </button>
-              </div>
+              </form>
             </div>
-          ))}
-        </div>
+
+            <div className="card portal-panel" style={{ padding: "20px" }}>
+              <h3 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: "700" }}>🔒 Change Account Password</h3>
+              <form onSubmit={handleChangePassword} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <label className="field">
+                  <span>Current Password</span>
+                  <input
+                    type="password"
+                    value={pwCurrent}
+                    onChange={(e) => setPwCurrent(e.target.value)}
+                    placeholder="Enter current password"
+                    required
+                  />
+                </label>
+                <label className="field">
+                  <span>New Password (min 6 characters)</span>
+                  <input
+                    type="password"
+                    value={pwNew}
+                    onChange={(e) => setPwNew(e.target.value)}
+                    placeholder="Enter new strong password"
+                    required
+                  />
+                </label>
+                {pwStatus && (
+                  <div style={{ color: pwStatus.type === "success" ? "var(--green-neon)" : "var(--red)", fontSize: "12px" }}>
+                    {pwStatus.text}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={pwLoading}
+                  style={{ background: "var(--orange)", borderColor: "var(--orange)", fontWeight: "700", marginTop: "6px" }}
+                >
+                  {pwLoading ? "Updating Password..." : "Update Password"}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* =========================================================================
@@ -517,22 +880,22 @@ export default function CustomerPortal() {
       <div className="cust-invoices-section">
         <h3 className="section-title-sm">Recent Tax Invoices & Downloads</h3>
         <div className="invoices-cards-grid">
-          {myOrders.slice(0, 3).map((o, idx) => (
+          {myOrders.slice(0, 3).map((o) => (
             <div key={o.id} className="invoice-download-card">
               <div className="inv-icon">
                 <FileText size={24} style={{ color: "var(--green)" }} />
               </div>
               <div className="inv-details">
-                <strong style={{ fontSize: "14px" }}>#INV-2026-08{idx + 1}</strong>
+                <strong style={{ fontSize: "14px" }}>#INV-{o.orderNumber || o.id}</strong>
                 <div style={{ fontSize: "12px", color: "var(--text-dim)" }}>
-                  Date: Aug {24 + idx}, 2026 • Amount: <strong style={{ color: "var(--text)" }}>₹{(o.qty * 89.5).toLocaleString("en-IN")}</strong>
+                  Date: {o.createdAt ? new Date(o.createdAt).toLocaleDateString() : "Recent"} • Amount: <strong style={{ color: "var(--text)" }}>₹{(o.total || ((o.qty || 100) * 89.5)).toLocaleString("en-IN")}</strong>
                 </div>
               </div>
               <button
                 className="btn-download-pdf"
-                onClick={() => handleDownloadInvoicePDF(o.orderNumber)}
+                onClick={() => setInvoiceOrder(o)}
               >
-                <Download size={14} /> PDF
+                <FileText size={14} /> View Invoice
               </button>
             </div>
           ))}

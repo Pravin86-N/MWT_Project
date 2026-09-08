@@ -52,6 +52,8 @@ export default function CompanyRegisterModal({ open, onClose }) {
     designation: "Procurement Manager",
     mobile: "",
     email: "",
+    password: "",
+    confirmPassword: "",
     altContact: "",
     website: "",
 
@@ -125,6 +127,14 @@ export default function CompanyRegisterModal({ open, onClose }) {
       errs.email = "Email Address is required.";
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       errs.email = "Enter a valid email address.";
+    }
+    if (!formData.password) {
+      errs.password = "Password is required.";
+    } else if (formData.password.length < 6) {
+      errs.password = "Password must be at least 6 characters.";
+    }
+    if (formData.password && formData.password !== formData.confirmPassword) {
+      errs.confirmPassword = "Passwords do not match.";
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -225,6 +235,8 @@ export default function CompanyRegisterModal({ open, onClose }) {
       designation: formData.designation,
       businessType: formData.businessType,
       email: formData.email,
+      password: formData.password || "customer123",
+      confirmPassword: formData.confirmPassword || formData.password || "customer123",
       phone: formData.mobile,
       mobile: formData.mobile,
       address: formData.address1 + (formData.address2 ? ", " + formData.address2 : ""),
@@ -346,6 +358,21 @@ export default function CompanyRegisterModal({ open, onClose }) {
               <h2 style={{ fontSize: "26px", fontWeight: "800", margin: "10px 0 6px", color: "var(--text)" }}>
                 Registration Submitted Successfully!
               </h2>
+              <div
+                style={{
+                  padding: "14px 18px",
+                  background: "rgba(255, 94, 0, 0.12)",
+                  border: "1px solid var(--orange)",
+                  borderRadius: "12px",
+                  color: "var(--orange)",
+                  fontWeight: "700",
+                  fontSize: "15px",
+                  margin: "12px auto 16px",
+                  maxWidth: "560px",
+                }}
+              >
+                "Your registration request has been submitted successfully and is awaiting approval."
+              </div>
               <p style={{ fontSize: "14px", color: "var(--text-dim)", maxWidth: "520px", margin: "0 auto" }}>
                 Thank you for registering <strong>{formData.companyName}</strong>. Your Reference Application ID is <strong style={{ color: "var(--orange)" }}>{submittedRegId}</strong>.
               </p>
@@ -503,6 +530,32 @@ export default function CompanyRegisterModal({ open, onClose }) {
                       className="input"
                     />
                     {errors.email && <small style={{ color: "var(--red)", fontSize: "11px" }}>{errors.email}</small>}
+                  </div>
+
+                  <div className="input-wrapper">
+                    <span className="input-label">Password *</span>
+                    <input
+                      name="password"
+                      type="password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      placeholder="••••••••"
+                      className="input"
+                    />
+                    {errors.password && <small style={{ color: "var(--red)", fontSize: "11px" }}>{errors.password}</small>}
+                  </div>
+
+                  <div className="input-wrapper">
+                    <span className="input-label">Confirm Password *</span>
+                    <input
+                      name="confirmPassword"
+                      type="password"
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                      placeholder="••••••••"
+                      className="input"
+                    />
+                    {errors.confirmPassword && <small style={{ color: "var(--red)", fontSize: "11px" }}>{errors.confirmPassword}</small>}
                   </div>
 
                   <div className="input-wrapper">

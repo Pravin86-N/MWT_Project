@@ -6,6 +6,7 @@ const {
   getPendingOrders,
   getDeliveryQueue,
   getOrderById,
+  getOrderInvoice,
   approveOrder,
   rejectOrder,
   assignOrder,
@@ -31,9 +32,11 @@ router.get('/queue', getDeliveryQueue);
 router.patch('/:id/approve', approveOrder);
 router.patch('/:id/reject', rejectOrder);
 router.patch('/:id/assign', assignOrder);
+router.put('/:id/assign', assignOrder);
 router.patch('/:id/status', updateOrderStatus);
 
 // Single order operations
+router.get('/:id/invoice', getOrderInvoice);
 router
   .route('/:id')
   .get(getOrderById)

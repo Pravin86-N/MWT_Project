@@ -5,6 +5,8 @@ const {
   getRegistrations,
   getRegistrationById,
   createRegistration,
+  approveRegistration,
+  rejectRegistration,
   updateRegistrationStatus,
   deleteRegistration,
 } = require('../controllers/registrationController');
@@ -24,7 +26,11 @@ router
   .get(getRegistrationById)
   .delete(deleteRegistration);
 
-// Status review (Approval / Rejection)
+// Customer Approval Workflow endpoints
+router.put('/:id/approve', approveRegistration);
+router.put('/:id/reject', rejectRegistration);
+
+// Backward compatible PATCH status endpoint
 router.patch('/:id/status', updateRegistrationStatus);
 
 module.exports = router;

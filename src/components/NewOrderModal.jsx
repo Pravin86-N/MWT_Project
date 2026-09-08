@@ -47,30 +47,24 @@ export default function NewOrderModal({ open, onClose, onCreate, initialData }) 
     onCreate({
       orderNumber,
       customer,
-      site: "Primary Delivery Site",
+      site: city ? `${customer} Site, ${city}` : "Primary Delivery Site",
+      deliveryAddress: city ? `${customer} Site, ${city}` : "Primary Delivery Site",
       fuelCode,
+      fuelType: fuelCode,
       qty: newQty,
+      quantity: newQty,
       driver: "Unassigned",
       vehicle: "—",
       city,
-      status: "Pending Approval",
-      slot: "Pending Approval",
+      status: "Pending",
+      slot: "08:00-10:00",
     });
 
     addNotification({
-      title: "Request Submitted",
-      message: `Fuel request ${orderNumber} for ${newQty.toLocaleString()} L of ${fuelCode} submitted & pending manager review.`,
-      category: "request",
+      title: "New Order Placed",
+      message: `Fuel order ${orderNumber} for ${newQty.toLocaleString()} L of ${fuelCode} submitted & pending manager review.`,
+      category: "order",
       role: "Customer",
-      type: "info",
-      orderId: orderNumber,
-    });
-
-    addNotification({
-      title: "New Fuel Request",
-      message: `New bulk fuel request ${orderNumber} from ${customer} (${newQty.toLocaleString()} L ${fuelCode}) awaiting manager review.`,
-      category: "request",
-      role: "Manager",
       type: "info",
       orderId: orderNumber,
     });
@@ -84,7 +78,7 @@ export default function NewOrderModal({ open, onClose, onCreate, initialData }) 
     <div className="modal-backdrop" onClick={onClose}>
       <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
         <div className="modal-head">
-          <h3>Request Fuel</h3>
+          <h3>New Order</h3>
           <button type="button" className="icon-btn" onClick={onClose}>
             <X size={18} />
           </button>
@@ -119,8 +113,8 @@ export default function NewOrderModal({ open, onClose, onCreate, initialData }) 
         </div>
 
         <label className="field">
-          <span>{t("deliveryCity")}</span>
-          <input value={city} onChange={(e) => setCity(e.target.value)} />
+          <span>{t("deliveryCity")} / Delivery Site Address</span>
+          <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Guindy Industrial Estate, Chennai" required />
         </label>
 
         <div className="preview">
@@ -129,8 +123,8 @@ export default function NewOrderModal({ open, onClose, onCreate, initialData }) 
           <span className="preview-total">{t("total")} ₹{preview.total.toFixed(2)}</span>
         </div>
 
-        <button type="submit" className="btn-primary full">
-          Submit Fuel Request (Pending Approval)
+        <button type="submit" className="btn-primary full" style={{ background: "var(--orange)", borderColor: "var(--orange)", fontWeight: 800 }}>
+          Place New Order (Pending Manager Review)
         </button>
       </form>
     </div>

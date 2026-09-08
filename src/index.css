@@ -5493,4 +5493,43 @@ tr:hover td {
   color: var(--text);
 }
 
+/* Print Styles for PDF Export & Reporting */
+@media print {
+  .sidebar,
+  .navbar,
+  .sidebar-toggle-btn,
+  .simulation-ticker,
+  .btn-primary,
+  .btn-ghost,
+  .btn-outline,
+  .floating-map-toolbar {
+    display: none !important;
+  }
+
+  body, .app-layout, .main-content, .reports-page, .portal-content {
+    background: #ffffff !important;
+    color: #111827 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  .card, .portal-panel, .fleet-kpi-card {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: none !important;
+    color: #111827 !important;
+    break-inside: avoid;
+  }
+
+  .fleet-title-saas, h1, h2, h3, h4, strong {
+    color: #111827 !important;
+  }
+
+  .fleet-subtitle-saas, small, span {
+    color: #4b5563 !important;
+  }
+}
+
+
 

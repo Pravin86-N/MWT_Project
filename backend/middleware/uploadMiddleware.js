@@ -55,9 +55,12 @@ const upload = multer({
 
 // Specific document upload fields for Customer Registration
 const uploadCustomerDocuments = upload.fields([
-  { name: 'gstCertificate', maxCount: 1 },
+  { name: 'panDocument', maxCount: 1 },
   { name: 'panCard', maxCount: 1 },
+  { name: 'gstCertificate', maxCount: 1 },
   { name: 'companyRegistrationCertificate', maxCount: 1 },
+  { name: 'addressProof', maxCount: 1 },
+  { name: 'additionalSupportingDocuments', maxCount: 5 },
 ]);
 
 module.exports = upload;

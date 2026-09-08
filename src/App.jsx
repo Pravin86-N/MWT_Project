@@ -23,14 +23,18 @@ import Drivers from "./pages/Drivers";
 import Vehicles from "./pages/Vehicles";
 import Customers from "./pages/Customers";
 import CustomerRegistrations from "./pages/CustomerRegistrations";
+import Applications from "./pages/Applications";
+import Register from "./pages/Register";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import DriverPortal from "./pages/DriverPortal";
 import NotFound from "./pages/NotFound";
 
 function RootRedirect() {
   const { state } = useAuth();
   if (state.status !== "authenticated") return <Navigate to="/login" replace />;
   if (state.user?.role === "Customer") return <Navigate to="/customer-portal" replace />;
+  if (state.user?.role === "Driver") return <Navigate to="/driver-portal" replace />;
   return <Navigate to="/dashboard" replace />;
 }
 
@@ -46,6 +50,7 @@ export default function App() {
                   <SimulationProvider>
                     <Routes>
                       <Route path="/login" element={<Login />} />
+                      <Route path="/register" element={<Register />} />
 
                       {/* Authenticated Application Routes */}
                       <Route
@@ -55,8 +60,9 @@ export default function App() {
                           </ProtectedRoute>
                         }
                       >
-                        {/* Customer Accessible Routes */}
+                        {/* Customer & Driver Accessible Routes */}
                         <Route path="/customer-portal" element={<CustomerPortal />} />
+                        <Route path="/driver-portal" element={<DriverPortal />} />
                         <Route path="/settings" element={<Settings />} />
 
                         {/* Strict Admin / Dispatcher Only Routes */}
@@ -77,10 +83,18 @@ export default function App() {
                           }
                         />
                         <Route
+                          path="/applications"
+                          element={
+                            <ProtectedRoute adminOnly>
+                              <Applications />
+                            </ProtectedRoute>
+                          }
+                        />
+                        <Route
                           path="/registrations"
                           element={
                             <ProtectedRoute adminOnly>
-                              <CustomerRegistrations />
+                              <Applications />
                             </ProtectedRoute>
                           }
                         />

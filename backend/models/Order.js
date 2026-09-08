@@ -131,8 +131,16 @@ const orderSchema = new mongoose.Schema(
     assignedAt: {
       type: Date,
     },
-    deliveredAt: {
+    reachedAt: {
       type: Date,
+    },
+    deliveryProof: {
+      type: String,
+      default: '',
+    },
+    customerSignature: {
+      type: String,
+      default: '',
     },
     notes: {
       type: String,

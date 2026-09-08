@@ -1,11 +1,13 @@
-const CustomerRegistration = require('../models/CustomerRegistration');
+const bcrypt = require('bcryptjs');
+const Registration = require('../models/Registration');
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 
 // Helper to generate registration ID: REG-YYYY-XXX
 const generateRegId = async () => {
   const year = new Date().getFullYear();
   const prefix = `REG-${year}`;
-  const count = await CustomerRegistration.countDocuments({
+  const count = await Registration.countDocuments({
     regId: new RegExp(`^${prefix}`),
   });
   const seq = String(900 + count + 1).padStart(3, '0');
@@ -14,13 +16,20 @@ const generateRegId = async () => {
 
 // @desc    Get all customer registrations
 // @route   GET /api/registrations
-// @access  Public / Protected
+// @access  Public / Protected (Admin, Depot Manager)
 const getRegistrations = async (req, res, next) => {
   try {
     const { status, search } = req.query;
     const filter = {};
 
-    if (status) filter.status = status;
+    if (status && status !== 'ALL') {
+      if (status === 'Pending' || status === 'Pending Review') {
+        filter.status = { $in: ['Pending', 'Pending Review'] };
+      } else {
+        filter.status = status;
+      }
+    }
+
     if (search) {
       filter.$or = [
         { regId: new RegExp(search, 'i') },
@@ -28,6 +37,7 @@ const getRegistrations = async (req, res, next) => {
         { authorizedPerson: new RegExp(search, 'i') },
         { contactPerson: new RegExp(search, 'i') },
         { email: new RegExp(search, 'i') },
+        { mobile: new RegExp(search, 'i') },
         { phone: new RegExp(search, 'i') },
         { gstNumber: new RegExp(search, 'i') },
         { panNumber: new RegExp(search, 'i') },
@@ -35,7 +45,7 @@ const getRegistrations = async (req, res, next) => {
       ];
     }
 
-    const registrations = await CustomerRegistration.find(filter).sort({
+    const registrations = await Registration.find(filter).sort({
       createdAt: -1,
     });
 
@@ -58,9 +68,9 @@ const getRegistrationById = async (req, res, next) => {
     let reg;
 
     if (id.match(/^[0-9a-fA-F]{24}$/)) {
-      reg = await CustomerRegistration.findById(id);
+      reg = await Registration.findById(id);
     } else {
-      reg = await CustomerRegistration.findOne({ regId: id });
+      reg = await Registration.findOne({ regId: id });
     }
 
     if (!reg) {
@@ -82,12 +92,16 @@ const getRegistrationById = async (req, res, next) => {
 const createRegistration = async (req, res, next) => {
   try {
     const {
+      email,
+      password,
+      confirmPassword,
       companyName,
       authorizedPerson,
+      authorizedPersonName,
       contactPerson,
-      email,
-      phone,
       mobile,
+      mobileNumber,
+      phone,
       gstNumber,
       panNumber,
       address,
@@ -103,44 +117,78 @@ const createRegistration = async (req, res, next) => {
       monthlyConsumption,
     } = req.body;
 
-    const person = authorizedPerson || contactPerson;
-    const contactPhone = phone || mobile;
+    const person = authorizedPerson || authorizedPersonName || contactPerson;
+    const contactPhone = mobile || mobileNumber || phone;
     const addr = address || address1;
-    const pin = pincode || postalCode;
+    const pin = pincode || postalCode || '600001';
 
-    // Validate required fields
-    if (
-      !companyName ||
-      !person ||
-      !email ||
-      !contactPhone ||
-      !gstNumber ||
-      !panNumber ||
-      !addr ||
-      !city ||
-      !state ||
-      !pin
-    ) {
+    // Validate Account Information
+    if (!email) {
       return res.status(400).json({
         success: false,
-        message:
-          'Please provide all required fields: companyName, authorizedPerson, email, phone, gstNumber, panNumber, address, city, state, pincode',
+        message: 'Email address is required.',
+      });
+    }
+
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password is required.',
+      });
+    }
+
+    if (confirmPassword && password !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password and Confirm Password do not match.',
+      });
+    }
+
+    // Validate Company Information
+    if (!companyName || !person || !contactPhone || !gstNumber || !panNumber || !addr) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide all required company details: Company Name, Authorized Person Name, Mobile Number, GST Number, PAN Number, and Address.',
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Check if user already exists in User collection
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'An approved account with this email address already exists. Please log in.',
+      });
+    }
+
+    // Check if registration already exists in Registration collection with Pending status
+    const existingReg = await Registration.findOne({
+      email: normalizedEmail,
+      status: { $in: ['Pending', 'Pending Review'] },
+    });
+    if (existingReg) {
+      return res.status(400).json({
+        success: false,
+        message: 'Your registration request has already been submitted and is awaiting approval.',
       });
     }
 
     const regId = req.body.regId || (await generateRegId());
 
-    // Normalize uploaded files from multer (handles both upload.any() array and upload.fields() object)
+    // Normalize uploaded files from multer
     const uploadedFiles = Array.isArray(req.files)
       ? req.files
       : Object.values(req.files || {}).flat();
 
-    let gstCertificate = {};
-    let panCard = {};
-    let companyRegistrationCertificate = {};
+    let panDoc = {};
+    let gstDoc = {};
+    let companyRegDoc = {};
+    let addrDoc = {};
+    const additionalDocs = [];
     const documents = [];
 
-    // Process uploaded files
     uploadedFiles.forEach((file) => {
       const field = file.fieldname.toLowerCase();
       const fileData = {
@@ -152,127 +200,112 @@ const createRegistration = async (req, res, next) => {
         uploadedAt: new Date(),
       };
 
-      if (field.includes('gst') || field === 'gstcertificate') {
-        gstCertificate = fileData;
+      if (field.includes('pan') || field === 'pandocument' || field === 'pancard') {
+        panDoc = fileData;
+        documents.push({ type: 'PAN Document', ...fileData });
+      } else if (field.includes('gst') || field === 'gstcertificate') {
+        gstDoc = fileData;
         documents.push({ type: 'GST Certificate', ...fileData });
-      } else if (field.includes('pan') || field === 'pancard') {
-        panCard = fileData;
-        documents.push({ type: 'PAN Card', ...fileData });
       } else if (
         field.includes('company') ||
-        field.includes('cert') ||
+        field.includes('registration') ||
         field === 'companyregistrationcertificate'
       ) {
-        companyRegistrationCertificate = fileData;
-        documents.push({
-          type: 'Company Registration Certificate',
-          ...fileData,
-        });
+        companyRegDoc = fileData;
+        documents.push({ type: 'Company Registration Certificate', ...fileData });
+      } else if (field.includes('address') || field === 'addressproof') {
+        addrDoc = fileData;
+        documents.push({ type: 'Address Proof', ...fileData });
       } else {
+        additionalDocs.push(fileData);
         documents.push({
-          type: req.body[`type_${file.fieldname}`] || file.fieldname,
+          type: req.body[`type_${file.fieldname}`] || 'Additional Supporting Document',
           ...fileData,
         });
       }
     });
 
-    // Also support JSON documents payload if passed (e.g. from seeds or raw JSON clients)
-    if (req.body.documents) {
-      try {
-        const parsed =
-          typeof req.body.documents === 'string'
-            ? JSON.parse(req.body.documents)
-            : req.body.documents;
-        if (Array.isArray(parsed)) {
-          parsed.forEach((doc) => {
-            const docObj = {
-              type: doc.type || 'Attachment',
-              fileName: doc.fileName || doc.filename || 'document.pdf',
-              originalName: doc.originalName || doc.fileName || '',
-              filePath: doc.filePath || `/uploads/${doc.fileName || ''}`,
-              mimetype: doc.mimetype || 'application/pdf',
-              size: doc.size || 0,
-              uploadedAt: doc.uploadedAt || new Date(),
-            };
+    // Hash the password before saving into Registration collection
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
-            documents.push(docObj);
-
-            if (docObj.type === 'GST Certificate' && !gstCertificate.fileName) {
-              gstCertificate = docObj;
-            } else if (docObj.type === 'PAN Card' && !panCard.fileName) {
-              panCard = docObj;
-            } else if (
-              (docObj.type === 'Company Registration Certificate' ||
-                docObj.type === 'Incorporation Cert') &&
-              !companyRegistrationCertificate.fileName
-            ) {
-              companyRegistrationCertificate = docObj;
-            }
-          });
-        }
-      } catch (err) {
-        // Ignore JSON parse error for body.documents
-      }
-    }
-
-    const registration = await CustomerRegistration.create({
+    // Save application into Registration collection with Status = 'Pending'
+    // NOTE: Customer account is NOT created in Users collection yet!
+    const registration = await Registration.create({
       regId,
+      email: normalizedEmail,
+      password: hashedPassword,
       companyName: companyName.trim(),
       authorizedPerson: person.trim(),
       contactPerson: person.trim(),
-      email: email.toLowerCase().trim(),
-      phone: contactPhone.trim(),
       mobile: contactPhone.trim(),
+      phone: contactPhone.trim(),
       gstNumber: gstNumber.toUpperCase().trim(),
       panNumber: panNumber.toUpperCase().trim(),
       address: addr.trim(),
       address1: addr.trim(),
-      city: city.trim(),
-      state: state.trim(),
+      city: (city || 'Chennai').trim(),
+      state: (state || 'Tamil Nadu').trim(),
       pincode: pin.trim(),
       postalCode: pin.trim(),
-      gstCertificate,
-      panCard,
-      companyRegistrationCertificate,
-      documents,
       businessType: businessType || 'Commercial',
-      designation: designation || '',
+      designation: designation || 'Director',
       companyRegNo: companyRegNo || '',
       fuelType: fuelType || 'DSL',
       monthlyConsumption: monthlyConsumption ? Number(monthlyConsumption) : 0,
-      status: 'Pending Review',
+      panDocument: panDoc,
+      panCard: panDoc,
+      gstCertificate: gstDoc,
+      companyRegistrationCertificate: companyRegDoc,
+      addressProof: addrDoc,
+      additionalSupportingDocuments: additionalDocs,
+      documents,
+      status: 'Pending',
+      submittedAt: new Date(),
     });
+
+    // Notify Admins & Depot Managers
+    try {
+      await Notification.create({
+        title: 'New Customer Registration',
+        message: `New registration application #${registration.regId} submitted by ${registration.companyName} awaiting approval.`,
+        category: 'registration',
+        role: 'Admin',
+        type: 'info',
+      });
+    } catch (notifErr) {
+      console.warn('[Notification Warning]:', notifErr.message);
+    }
 
     res.status(201).json({
       success: true,
-      message: 'Customer registration application submitted successfully',
-      data: registration,
+      message: 'Your registration request has been submitted successfully and is awaiting approval.',
+      data: {
+        _id: registration._id,
+        regId: registration.regId,
+        companyName: registration.companyName,
+        email: registration.email,
+        status: registration.status,
+        submittedAt: registration.submittedAt,
+      },
     });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Update registration status (Approve / Reject)
-// @route   PATCH /api/registrations/:id/status
+// @desc    Approve customer registration (Admin & Depot Manager)
+// @route   PUT /api/registrations/:id/approve
 // @access  Private (Admin, Depot Manager)
-const updateRegistrationStatus = async (req, res, next) => {
+const approveRegistration = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { status, reviewNotes, initialCreditLimit = 300000 } = req.body;
-
-    if (!['Pending Review', 'Approved', 'Rejected'].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Status must be 'Pending Review', 'Approved', or 'Rejected'",
-      });
-    }
 
     let reg;
     if (id.match(/^[0-9a-fA-F]{24}$/)) {
-      reg = await CustomerRegistration.findById(id);
+      reg = await Registration.findById(id);
     } else {
-      reg = await CustomerRegistration.findOne({ regId: id });
+      reg = await Registration.findOne({ regId: id });
     }
 
     if (!reg) {
@@ -282,36 +315,134 @@ const updateRegistrationStatus = async (req, res, next) => {
       });
     }
 
-    reg.status = status;
-    if (reviewNotes !== undefined) reg.reviewNotes = reviewNotes;
-    await reg.save();
-
-    // If approved, create user account if it doesn't already exist
-    if (status === 'Approved') {
-      const existingUser = await User.findOne({ email: reg.email });
-      if (!existingUser) {
-        const defaultPassword = 'customer123';
-        await User.create({
-          name: reg.companyName,
-          email: reg.email,
-          password: defaultPassword,
-          role: 'Customer',
-          site: reg.address || `${reg.companyName} Site`,
-          city: reg.city,
-          creditLimit: initialCreditLimit,
-          creditUsed: 0,
-          phone: reg.phone,
-        });
-      }
+    // 1. Create actual customer account in Users collection if not existing
+    const existingUser = await User.findOne({ email: reg.email });
+    if (!existingUser) {
+      // 2. Copy registration data
+      // 3. Set role = Customer
+      // 4. Store hashed password (already hashed in Registration)
+      await User.create({
+        name: reg.companyName,
+        email: reg.email,
+        password: reg.password, // Pre-hashed password copied directly
+        role: 'Customer',
+        site: reg.address || `${reg.companyName} Site`,
+        city: reg.city || 'Chennai',
+        creditLimit: 500000,
+        creditUsed: 0,
+        phone: reg.mobile || reg.phone || '',
+      });
+    } else {
+      // Ensure user role is Customer and sync password
+      existingUser.role = 'Customer';
+      existingUser.password = reg.password;
+      await existingUser.save();
     }
 
+    // 5. Update registration status = Approved
+    // 6. Save approvedBy
+    // 7. Save approvedAt
+    reg.status = 'Approved';
+    reg.approvedBy = req.user?.name || req.body?.approvedBy || 'Admin';
+    reg.approvedAt = new Date();
+    reg.reviewNotes = req.body?.reviewNotes || 'Registration approved and customer activated.';
+    await reg.save();
+
+    try {
+      await Notification.create({
+        title: 'Account Approved',
+        message: `Corporate account for ${reg.companyName} has been approved. You can now log in and place orders.`,
+        category: 'registration',
+        role: 'Customer',
+        type: 'success',
+      });
+    } catch (notifErr) {
+      console.warn('[Notification Warning]:', notifErr.message);
+    }
+
+    // 8. Show success message
     res.status(200).json({
       success: true,
-      message: `Registration ${status.toLowerCase()} successfully`,
+      message: `Registration for ${reg.companyName} approved successfully. Customer account activated.`,
       data: reg,
     });
   } catch (error) {
     next(error);
+  }
+};
+
+// @desc    Reject customer registration (Admin & Depot Manager)
+// @route   PUT /api/registrations/:id/reject
+// @access  Private (Admin, Depot Manager)
+const rejectRegistration = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { rejectionReason, reason } = req.body;
+
+    const reasonText = rejectionReason || reason || 'Application rejected by reviewer.';
+
+    let reg;
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      reg = await Registration.findById(id);
+    } else {
+      reg = await Registration.findOne({ regId: id });
+    }
+
+    if (!reg) {
+      return res.status(404).json({
+        success: false,
+        message: 'Registration request not found',
+      });
+    }
+
+    // 1. Status = Rejected
+    // 2. Save rejection reason
+    // 3. Save rejected date
+    reg.status = 'Rejected';
+    reg.rejectionReason = reasonText;
+    reg.rejectedAt = new Date();
+    reg.reviewNotes = reasonText;
+    await reg.save();
+
+    // If an associated customer user was created, remove it to enforce login restrictions
+    await User.findOneAndDelete({ email: reg.email, role: 'Customer' });
+
+    try {
+      await Notification.create({
+        title: 'Registration Rejected',
+        message: `Registration application for ${reg.companyName} was rejected: ${reasonText}`,
+        category: 'registration',
+        role: 'Admin',
+        type: 'warning',
+      });
+    } catch (notifErr) {
+      console.warn('[Notification Warning]:', notifErr.message);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Registration for ${reg.companyName} has been rejected.`,
+      data: reg,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update registration status (Backward compatible status patch)
+// @route   PATCH /api/registrations/:id/status
+// @access  Private (Admin, Depot Manager)
+const updateRegistrationStatus = async (req, res, next) => {
+  const { status } = req.body;
+  if (status === 'Approved') {
+    return approveRegistration(req, res, next);
+  } else if (status === 'Rejected') {
+    return rejectRegistration(req, res, next);
+  } else {
+    return res.status(400).json({
+      success: false,
+      message: "Status must be 'Approved' or 'Rejected'",
+    });
   }
 };
 
@@ -321,7 +452,7 @@ const updateRegistrationStatus = async (req, res, next) => {
 const deleteRegistration = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const reg = await CustomerRegistration.findByIdAndDelete(id);
+    const reg = await Registration.findByIdAndDelete(id);
 
     if (!reg) {
       return res.status(404).json({
@@ -343,6 +474,8 @@ module.exports = {
   getRegistrations,
   getRegistrationById,
   createRegistration,
+  approveRegistration,
+  rejectRegistration,
   updateRegistrationStatus,
   deleteRegistration,
 };
