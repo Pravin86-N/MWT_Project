@@ -21,15 +21,19 @@ const generateRegId = async () => {
 const getCustomers = async (req, res, next) => {
   try {
     console.log('[FDMS Backend] Fetching real customer records from MongoDB...');
-    const { status, search, city } = req.query;
+    const { status, search, city } = req?.query || {};
 
     // 1. Fetch ONLY Approved customer registrations from MongoDB
     const regFilter = { status: 'Approved' };
     if (city) regFilter.city = new RegExp(city, 'i');
     const registrations = await CustomerRegistration.find(regFilter).sort({ createdAt: -1 });
 
-    // 2. Fetch all registered user accounts with role 'Customer'
-    const customerUsers = await User.find({ role: 'Customer' }).select('-password');
+    // 2. Fetch all registered user accounts with role 'Customer' that are active and not pending/rejected
+    const customerUsers = await User.find({
+      role: 'Customer',
+      status: { $nin: ['Pending', 'Pending Review', 'Rejected'] },
+      isVerified: { $ne: false },
+    }).select('-password');
 
     // 3. Fetch all orders from MongoDB to aggregate metrics
     const orders = await Order.find({}).sort({ createdAt: -1 });
@@ -95,10 +99,24 @@ const getCustomers = async (req, res, next) => {
       });
     });
 
-    // Merge customer users if not already present
+    // Find any unapproved registrations to strictly exclude from customer list
+    const unapprovedRegs = await CustomerRegistration.find({
+      status: { $in: ['Pending', 'Pending Review', 'Rejected'] },
+    });
+    const blockedEmails = new Set(
+      unapprovedRegs.map((r) => (r.email || '').toLowerCase().trim()).filter(Boolean)
+    );
+    const blockedNames = new Set(
+      unapprovedRegs.map((r) => (r.companyName || '').toLowerCase().trim()).filter(Boolean)
+    );
+
+    // Merge customer users if explicitly approved and not unapproved
     customerUsers.forEach((u) => {
+      const userEmail = (u.email || '').toLowerCase().trim();
+      if (blockedEmails.has(userEmail)) return;
+
       const nameKey = (u.name || '').toLowerCase().trim();
-      if (!nameKey) return;
+      if (!nameKey || blockedNames.has(nameKey)) return;
 
       if (customerMap.has(nameKey)) {
         const existing = customerMap.get(nameKey);
@@ -160,98 +178,57 @@ const getCustomers = async (req, res, next) => {
       }
     });
 
-    // Aggregate Orders telemetry for each customer
+    // Aggregate Orders telemetry ONLY for existing approved customers
     orders.forEach((o) => {
       const custName = (o.customer || '').trim();
       const nameKey = custName.toLowerCase();
       if (!nameKey) return;
 
-      let entry = customerMap.get(nameKey);
-      if (!entry) {
-        // Customer appeared in orders without formal registration
-        entry = {
-          _id: o._id,
-          id: `CUST-${o._id.toString().slice(-6)}`,
-          regId: '',
-          name: custName,
-          companyName: custName,
-          authorizedPerson: 'Procurement Officer',
-          contactPerson: 'Procurement Officer',
-          email: `info@${nameKey.replace(/[^a-z0-9]/g, '')}.com`,
-          phone: '+91 98400 12345',
-          mobile: '+91 98400 12345',
-          address: o.site || o.deliveryAddress || 'Tamil Nadu',
-          city: o.city || 'Chennai',
-          state: 'Tamil Nadu',
-          pincode: '600001',
-          gstNumber: '—',
-          panNumber: '—',
-          businessType: 'Commercial Account',
-          industry: 'Commercial Account',
-          monthlyConsumption: 20000,
-          registrationStatus: 'Approved',
-          status: 'Active',
-          priority: 'Standard',
-          credit: {
-            limit: 500000,
-            used: 0,
-            terms: 'NET 30',
-          },
-          contact: {
-            name: 'Procurement Officer',
-            phone: '+91 98400 12345',
-            email: `info@${nameKey.replace(/[^a-z0-9]/g, '')}.com`,
-            since: '2026-01-01',
-          },
-          documents: [],
-          ordersCount: 0,
-          orders: 0,
-          totalQty: 0,
-          litres: 0,
-          revenue: 0,
-          activeOrdersCount: 0,
-          pendingRequestsCount: 0,
-          deliveriesCount: 0,
-          customerOrders: [],
-          lastOrderDate: 'No orders yet',
-          createdAt: o.createdAt,
-        };
-        customerMap.set(nameKey, entry);
-      }
+      const entry = customerMap.get(nameKey);
+      if (!entry) return; // Do not add synthetic unapproved customers from raw orders
 
-      // Append order to customer profile
-      entry.customerOrders.push(o);
       entry.ordersCount += 1;
-      entry.orders = entry.ordersCount;
+      entry.orders += 1;
+      entry.totalQty += o.quantity || o.qty || 0;
+      entry.litres += o.quantity || o.qty || 0;
+      entry.revenue += o.total || (o.qty || o.quantity || 1000) * 92;
 
-      const qty = o.quantity || o.qty || 0;
-      const total = o.total || 0;
-
-      if (o.status !== 'Cancelled' && o.status !== 'Rejected') {
-        entry.totalQty += qty;
-        entry.litres = entry.totalQty;
-        entry.revenue += total;
-      }
-
-      if (['In Transit', 'InTransit', 'Dispatched', 'Assigned'].includes(o.status)) {
+      if (
+        ['InTransit', 'In Transit', 'Dispatched', 'Assigned', 'Pending', 'Pending Approval', 'Approved'].includes(
+          o.status
+        )
+      ) {
         entry.activeOrdersCount += 1;
       }
-
-      if (['Pending', 'Pending Approval'].includes(o.status)) {
+      if (o.status === 'Pending' || o.status === 'Pending Approval') {
         entry.pendingRequestsCount += 1;
       }
-
       if (o.status === 'Delivered') {
         entry.deliveriesCount += 1;
       }
 
-      if (o.orderNumber) {
+      entry.customerOrders.push(o);
+      if (
+        entry.lastOrderDate === 'No orders yet' ||
+        new Date(o.createdAt) > new Date(entry.lastOrderDate)
+      ) {
         entry.lastOrderDate = `Order #${o.orderNumber}`;
       }
     });
 
+    // Strictly return ONLY approved customers
+    let results = Array.from(customerMap.values()).filter(
+      (c) =>
+        c.registrationStatus === 'Approved' &&
+        c.status !== 'Pending' &&
+        c.status !== 'Pending Review' &&
+        c.status !== 'Rejected' &&
+        !blockedEmails.has((c.email || '').toLowerCase().trim()) &&
+        !blockedNames.has((c.name || '').toLowerCase().trim())
+    );
+
     // Calculate dynamic credit used if not set
-    let result = Array.from(customerMap.values()).map((c) => {
+    let result = results.map((c) => {
       if (c.credit.used === 0 && c.revenue > 0) {
         c.credit.used = Math.min(c.credit.limit, Math.round(c.revenue * 0.25));
       }

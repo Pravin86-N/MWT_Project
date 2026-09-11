@@ -161,6 +161,25 @@ export function AuthProvider({ children }) {
     dispatch({ type: "LOGOUT" });
   }, []);
 
+  const loginWithEmailOtp = useCallback(async (email, otp) => {
+    dispatch({ type: "LOGIN_START" });
+    try {
+      const res = await authApi.verifyLoginOtp(email, otp);
+      const user = res.user || res.data || res;
+      if (res.token) {
+        user.token = res.token;
+        localStorage.setItem("fdms-token", res.token);
+      }
+      localStorage.setItem("fdms-user", JSON.stringify(user));
+      dispatch({ type: "LOGIN_SUCCESS", payload: user });
+      return { ok: true, user };
+    } catch (err) {
+      const errMsg = err.response?.data?.message || err.message || "OTP verification failed.";
+      dispatch({ type: "LOGIN_FAILURE", payload: errMsg });
+      return { ok: false, error: errMsg };
+    }
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -168,6 +187,7 @@ export function AuthProvider({ children }) {
         login,
         loginWithGoogle,
         loginWithOtp,
+        loginWithEmailOtp,
         logout,
         changePassword,
         updateProfile,

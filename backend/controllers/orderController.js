@@ -4,6 +4,7 @@ const FuelPricing = require('../models/FuelPricing');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { logActivity } = require('./activityController');
+const { emitNotification } = require('../config/socket');
 
 // Helper to calculate pricing
 const calculateOrderPricing = async (fuelType, quantity) => {
@@ -119,13 +120,36 @@ const createOrder = async (req, res, next) => {
 
     // Create Notification for Depot Manager & Admin
     try {
-      await Notification.create({
+      const notifData = {
         title: 'New Fuel Order Received',
         message: `New bulk fuel request #${order.orderNumber} from ${order.customer} for ${order.quantity} L ${order.fuelType} awaiting manager approval.`,
         category: 'request',
         role: 'Depot Manager',
         type: 'info',
         orderId: order.orderNumber,
+      };
+      await Notification.create(notifData);
+      emitNotification({
+        role: 'Customer',
+        event: 'order_submitted',
+        notification: {
+          title: 'Order Submitted',
+          message: `Your fuel request #${order.orderNumber} for ${order.quantity} L ${order.fuelType} has been submitted.`,
+          category: 'order',
+          role: 'Customer',
+          type: 'info',
+          orderId: order.orderNumber,
+        },
+      });
+      emitNotification({
+        role: 'Manager',
+        event: 'new_order_request',
+        notification: notifData,
+      });
+      emitNotification({
+        role: 'Admin',
+        event: 'new_order_request',
+        notification: notifData,
       });
     } catch (notifErr) {
       console.warn('[Notification Error]:', notifErr.message);
@@ -324,13 +348,24 @@ const approveOrder = async (req, res, next) => {
 
     // Create Notification for Customer & Driver
     try {
-      await Notification.create({
+      const notifData = {
         title: 'Order Approved',
         message: `Your fuel order #${order.orderNumber} (${order.quantity.toLocaleString()} L ${order.fuelType}) has been approved by the depot manager.`,
         category: 'order',
         role: 'Customer',
         type: 'success',
         orderId: order.orderNumber,
+      };
+      await Notification.create(notifData);
+      emitNotification({
+        role: 'Customer',
+        event: 'order_approved',
+        notification: notifData,
+      });
+      emitNotification({
+        role: 'Admin',
+        event: 'order_approved',
+        notification: notifData,
       });
     } catch (notifErr) {
       console.warn('[Notification Error]:', notifErr.message);
@@ -396,6 +431,26 @@ const rejectOrder = async (req, res, next) => {
     order.rejectionReason = finalReason;
     await order.save();
 
+    // Notify Customer of Rejection
+    try {
+      const rejectNotif = {
+        title: 'Order Rejected',
+        message: `Your fuel order #${order.orderNumber} was rejected: ${finalReason}`,
+        category: 'order',
+        role: 'Customer',
+        type: 'danger',
+        orderId: order.orderNumber,
+      };
+      await Notification.create(rejectNotif);
+      emitNotification({
+        role: 'Customer',
+        event: 'order_rejected',
+        notification: rejectNotif,
+      });
+    } catch (notifErr) {
+      console.warn('[Notification Error]:', notifErr.message);
+    }
+
     // Log Activity
     logActivity({
       action: 'Order Rejected',
@@ -453,21 +508,33 @@ const assignOrder = async (req, res, next) => {
 
     // Create Notification for Driver and Customer
     try {
-      await Notification.create({
-        title: 'Driver Assigned',
+      const driverNotif = {
+        title: 'Delivery Assigned',
         message: `Driver ${driver} and Tanker ${vehicle} assigned to Order #${order.orderNumber} (${order.customer}).`,
         category: 'dispatch',
         role: 'Driver',
         type: 'info',
         orderId: order.orderNumber,
-      });
-      await Notification.create({
+      };
+      const custNotif = {
         title: 'Driver Assigned to Order',
         message: `Driver ${driver} has been assigned to deliver your Order #${order.orderNumber}.`,
         category: 'dispatch',
         role: 'Customer',
         type: 'info',
         orderId: order.orderNumber,
+      };
+      await Notification.create(driverNotif);
+      await Notification.create(custNotif);
+      emitNotification({
+        role: 'Driver',
+        event: 'delivery_assigned',
+        notification: driverNotif,
+      });
+      emitNotification({
+        role: 'Customer',
+        event: 'delivery_assigned',
+        notification: custNotif,
       });
     } catch (notifErr) {
       console.warn('[Notification Error]:', notifErr.message);
@@ -475,12 +542,12 @@ const assignOrder = async (req, res, next) => {
 
     // Log Activity
     logActivity({
-      action: 'Driver Assigned',
+      action: 'Vehicle Assigned',
       userId: req.user?._id || null,
       userName: req.user?.name || 'Depot Manager',
       userRole: req.user?.role || 'Depot Manager',
       entityId: order.orderNumber,
-      details: `Driver ${driver} and Tanker ${vehicle} assigned to Order #${order.orderNumber} (${order.customer})`,
+      details: `Vehicle ${vehicle} and driver ${driver} assigned to Order #${order.orderNumber} (${order.customer})`,
       ipAddress: req.ip || req.connection?.remoteAddress || '',
       metadata: { driver, vehicle },
     });

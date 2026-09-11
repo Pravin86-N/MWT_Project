@@ -107,6 +107,44 @@ export const authApi = {
     return data;
   },
 
+  // Send Email OTP for Login
+  sendLoginOtp: async (email) => {
+    const response = await api.post("/auth/send-login-otp", { email });
+    return response.data;
+  },
+
+  // Verify Email OTP for Login
+  verifyLoginOtp: async (email, otp) => {
+    const response = await api.post("/auth/verify-login-otp", { email, otp });
+    const data = response.data;
+    if (data.token) {
+      localStorage.setItem("fdms-token", data.token);
+    }
+    return data;
+  },
+
+  // Forgot Password - Send Reset OTP
+  forgotPassword: async (email) => {
+    const response = await api.post("/auth/forgot-password", { email });
+    return response.data;
+  },
+
+  // Verify Forgot Password OTP
+  verifyResetOtp: async (email, otp) => {
+    const response = await api.post("/auth/verify-reset-otp", { email, otp });
+    return response.data;
+  },
+
+  // Set New Password after OTP verification or Reset Token link
+  resetPassword: async (emailOrPayload, otp, newPassword, token) => {
+    const payload =
+      typeof emailOrPayload === "object"
+        ? emailOrPayload
+        : { email: emailOrPayload, otp, newPassword, token };
+    const response = await api.post("/auth/reset-password", payload);
+    return response.data;
+  },
+
   // Register new user
   register: async (userData) => {
     const response = await api.post("/auth/register", userData);

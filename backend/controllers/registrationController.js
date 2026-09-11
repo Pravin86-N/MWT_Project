@@ -2,6 +2,8 @@ const bcrypt = require('bcryptjs');
 const Registration = require('../models/Registration');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const { logActivity } = require('./activityController');
+const { emitNotification } = require('../config/socket');
 
 // Helper to generate registration ID: REG-YYYY-XXX
 const generateRegId = async () => {
@@ -194,7 +196,7 @@ const createRegistration = async (req, res, next) => {
       const fileData = {
         fileName: file.filename,
         originalName: file.originalname,
-        filePath: `/uploads/${file.filename}`,
+        filePath: `/uploads/customers/${file.filename}`,
         mimetype: file.mimetype,
         size: file.size,
         uploadedAt: new Date(),
@@ -264,14 +266,35 @@ const createRegistration = async (req, res, next) => {
       submittedAt: new Date(),
     });
 
-    // Notify Admins & Depot Managers
+    // Log Audit Trail
+    logActivity({
+      action: 'Customer Registered',
+      userName: registration.companyName,
+      userRole: 'Customer',
+      entityId: registration.regId,
+      details: `New customer registration submitted by ${registration.companyName} (${registration.email})`,
+      ipAddress: req.ip || req.connection?.remoteAddress || '',
+    });
+
+    // Notify Admins & Depot Managers in DB and via real-time Socket.IO
     try {
-      await Notification.create({
+      const notifData = {
         title: 'New Customer Registration',
         message: `New registration application #${registration.regId} submitted by ${registration.companyName} awaiting approval.`,
         category: 'registration',
         role: 'Admin',
         type: 'info',
+      };
+      await Notification.create(notifData);
+      emitNotification({
+        role: 'Manager',
+        event: 'new_registration_request',
+        notification: notifData,
+      });
+      emitNotification({
+        role: 'Admin',
+        event: 'new_registration_request',
+        notification: notifData,
       });
     } catch (notifErr) {
       console.warn('[Notification Warning]:', notifErr.message);
@@ -319,13 +342,14 @@ const approveRegistration = async (req, res, next) => {
     const existingUser = await User.findOne({ email: reg.email });
     if (!existingUser) {
       // 2. Copy registration data
-      // 3. Set role = Customer
+      // 3. Set role = Customer, status = Approved
       // 4. Store hashed password (already hashed in Registration)
       await User.create({
         name: reg.companyName,
         email: reg.email,
         password: reg.password, // Pre-hashed password copied directly
         role: 'Customer',
+        status: 'Approved',
         site: reg.address || `${reg.companyName} Site`,
         city: reg.city || 'Chennai',
         creditLimit: 500000,
@@ -333,8 +357,9 @@ const approveRegistration = async (req, res, next) => {
         phone: reg.mobile || reg.phone || '',
       });
     } else {
-      // Ensure user role is Customer and sync password
+      // Ensure user role is Customer, status is Approved, and sync password
       existingUser.role = 'Customer';
+      existingUser.status = 'Approved';
       existingUser.password = reg.password;
       await existingUser.save();
     }
@@ -348,13 +373,30 @@ const approveRegistration = async (req, res, next) => {
     reg.reviewNotes = req.body?.reviewNotes || 'Registration approved and customer activated.';
     await reg.save();
 
+    // Log Audit Trail
+    logActivity({
+      action: 'Customer Approved',
+      userId: req.user?._id || null,
+      userName: req.user?.name || req.body?.approvedBy || 'Admin',
+      userRole: req.user?.role || 'Admin',
+      entityId: reg.regId,
+      details: `Customer account for ${reg.companyName} (${reg.email}) approved and activated`,
+      ipAddress: req.ip || req.connection?.remoteAddress || '',
+    });
+
     try {
-      await Notification.create({
+      const notifData = {
         title: 'Account Approved',
         message: `Corporate account for ${reg.companyName} has been approved. You can now log in and place orders.`,
         category: 'registration',
         role: 'Customer',
         type: 'success',
+      };
+      await Notification.create(notifData);
+      emitNotification({
+        role: 'Customer',
+        event: 'order_approved',
+        notification: notifData,
       });
     } catch (notifErr) {
       console.warn('[Notification Warning]:', notifErr.message);
@@ -407,13 +449,30 @@ const rejectRegistration = async (req, res, next) => {
     // If an associated customer user was created, remove it to enforce login restrictions
     await User.findOneAndDelete({ email: reg.email, role: 'Customer' });
 
+    // Log Audit Trail
+    logActivity({
+      action: 'Registration Rejected',
+      userId: req.user?._id || null,
+      userName: req.user?.name || 'Admin',
+      userRole: req.user?.role || 'Admin',
+      entityId: reg.regId,
+      details: `Registration for ${reg.companyName} rejected: ${reasonText}`,
+      ipAddress: req.ip || req.connection?.remoteAddress || '',
+    });
+
     try {
-      await Notification.create({
+      const notifData = {
         title: 'Registration Rejected',
         message: `Registration application for ${reg.companyName} was rejected: ${reasonText}`,
         category: 'registration',
         role: 'Admin',
         type: 'warning',
+      };
+      await Notification.create(notifData);
+      emitNotification({
+        role: 'Admin',
+        event: 'order_rejected',
+        notification: notifData,
       });
     } catch (notifErr) {
       console.warn('[Notification Warning]:', notifErr.message);

@@ -1,6 +1,7 @@
 import React from "react";
 //control.exe keymgr.dll
 import { Routes, Route, Navigate } from "react-router-dom";
+import { GoogleOAuthProvider } from "@react-oauth/google";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { LanguageProvider } from "./context/LanguageContext";
@@ -10,6 +11,7 @@ import { InventoryProvider } from "./context/InventoryContext";
 import { SimulationProvider } from "./context/SimulationContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ErrorBoundary from "./components/ErrorBoundary";
 import AppLayout from "./layouts/AppLayout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -28,6 +30,8 @@ import Register from "./pages/Register";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import DriverPortal from "./pages/DriverPortal";
+import ForgotPassword from "./pages/ForgotPassword";
+import AuditLogs from "./pages/AuditLogs";
 import NotFound from "./pages/NotFound";
 
 function RootRedirect() {
@@ -39,30 +43,40 @@ function RootRedirect() {
 }
 
 export default function App() {
-  return (
-    <ThemeProvider>
-      <LanguageProvider>
-        <AuthProvider>
-          <SettingsProvider>
-            <NotificationProvider>
-              <InventoryProvider>
-                <OrdersProvider>
-                  <SimulationProvider>
-                    <Routes>
-                      <Route path="/login" element={<Login />} />
-                      <Route path="/register" element={<Register />} />
+  const googleClientId =
+    import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+    "834977368397-qaip36ga1e6or3gujguc950kkajb4vjd.apps.googleusercontent.com";
 
-                      {/* Authenticated Application Routes */}
-                      <Route
-                        element={
-                          <ProtectedRoute>
-                            <AppLayout />
-                          </ProtectedRoute>
-                        }
-                      >
+  return (
+    <GoogleOAuthProvider clientId={googleClientId}>
+      <ErrorBoundary>
+        <ThemeProvider>
+          <LanguageProvider>
+            <AuthProvider>
+              <SettingsProvider>
+                <NotificationProvider>
+                  <InventoryProvider>
+                    <OrdersProvider>
+                      <SimulationProvider>
+                        <Routes>
+                          <Route path="/login" element={<Login />} />
+                          <Route path="/register" element={<Register />} />
+                          <Route path="/forgot-password" element={<ForgotPassword />} />
+
+                          {/* Authenticated Application Routes */}
+                          <Route
+                            element={
+                              <ProtectedRoute>
+                                <ErrorBoundary>
+                                  <AppLayout />
+                                </ErrorBoundary>
+                              </ProtectedRoute>
+                            }
+                          >
                         {/* Customer & Driver Accessible Routes */}
                         <Route path="/customer-portal" element={<CustomerPortal />} />
                         <Route path="/driver-portal" element={<DriverPortal />} />
+                        <Route path="/fleet-map" element={<FleetMap />} />
                         <Route path="/settings" element={<Settings />} />
 
                         {/* Strict Admin / Dispatcher Only Routes */}
@@ -99,6 +113,22 @@ export default function App() {
                           }
                         />
                         <Route
+                          path="/application-dossier"
+                          element={
+                            <ProtectedRoute adminOnly>
+                              <Applications />
+                            </ProtectedRoute>
+                          }
+                        />
+                        <Route
+                          path="/audit-logs"
+                          element={
+                            <ProtectedRoute adminOnly>
+                              <AuditLogs />
+                            </ProtectedRoute>
+                          }
+                        />
+                        <Route
                           path="/orders"
                           element={
                             <ProtectedRoute adminOnly>
@@ -111,14 +141,6 @@ export default function App() {
                           element={
                             <ProtectedRoute adminOnly>
                               <OrderDetail />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/fleet-map"
-                          element={
-                            <ProtectedRoute adminOnly>
-                              <FleetMap />
                             </ProtectedRoute>
                           }
                         />
@@ -175,5 +197,7 @@ export default function App() {
         </AuthProvider>
       </LanguageProvider>
     </ThemeProvider>
+  </ErrorBoundary>
+</GoogleOAuthProvider>
   );
 }

@@ -52,6 +52,52 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    googleId: {
+      type: String,
+      default: null,
+    },
+    profileImage: {
+      type: String,
+      default: '',
+    },
+    status: {
+      type: String,
+      enum: ['Pending', 'Approved', 'Rejected', 'Active'],
+      default: 'Active',
+    },
+    loginProvider: {
+      type: String,
+      enum: ['local', 'google'],
+      default: 'local',
+    },
+    resetPasswordToken: {
+      type: String,
+      default: null,
+    },
+    resetPasswordExpires: {
+      type: Date,
+      default: null,
+    },
+    resetOTP: {
+      type: String,
+      default: null,
+    },
+    resetOTPExpiry: {
+      type: Date,
+      default: null,
+    },
+    loginOTP: {
+      type: String,
+      default: null,
+    },
+    loginOTPExpiry: {
+      type: Date,
+      default: null,
+    },
+    loginAttempts: {
+      type: Number,
+      default: 0,
+    },
     createdAt: {
       type: Date,
       default: Date.now,

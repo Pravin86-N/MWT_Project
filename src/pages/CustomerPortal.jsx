@@ -301,15 +301,29 @@ export default function CustomerPortal() {
       <div className="kpi-grid-4">
         <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--blue)" }}>
           <div className="kpi-card-head">
-            <span className="kpi-card-lbl">Active Orders</span>
+            <span className="kpi-card-lbl">Orders</span>
             <div className="kpi-icon-badge">
               <Truck size={18} />
             </div>
           </div>
-          <div className="kpi-val">{activeDeliveries.length} Active</div>
+          <div className="kpi-val">{myOrders.length} Orders</div>
           <div className="kpi-footer">
-            <span className="trend-pill up">Live Telemetry</span>
-            <span style={{ color: "var(--text-dim)" }}>In transit / queue</span>
+            <span className="trend-pill up">{activeDeliveries.length} Active</span>
+            <span style={{ color: "var(--text-dim)" }}>{completedDeliveries.length} Delivered</span>
+          </div>
+        </div>
+
+        <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--orange)" }}>
+          <div className="kpi-card-head">
+            <span className="kpi-card-lbl">Fuel Consumption</span>
+            <div className="kpi-icon-badge">
+              <Fuel size={18} />
+            </div>
+          </div>
+          <div className="kpi-val">{totalLitresOrdered.toLocaleString()} L</div>
+          <div className="kpi-footer">
+            <span className="trend-pill up">Bulk Certified</span>
+            <span style={{ color: "var(--text-dim)" }}>High Speed Diesel & Petrol</span>
           </div>
         </div>
 
@@ -324,20 +338,6 @@ export default function CustomerPortal() {
           <div className="kpi-footer">
             <span className="trend-pill up">100% Fulfilled</span>
             <span style={{ color: "var(--text-dim)" }}>Tax receipts ready</span>
-          </div>
-        </div>
-
-        <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--orange)" }}>
-          <div className="kpi-card-head">
-            <span className="kpi-card-lbl">Total Fuel Ordered</span>
-            <div className="kpi-icon-badge">
-              <Fuel size={18} />
-            </div>
-          </div>
-          <div className="kpi-val">{totalLitresOrdered.toLocaleString()} L</div>
-          <div className="kpi-footer">
-            <span className="trend-pill up">Bulk Certified</span>
-            <span style={{ color: "var(--text-dim)" }}>Density calibrated</span>
           </div>
         </div>
 

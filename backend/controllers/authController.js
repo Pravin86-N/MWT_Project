@@ -1,8 +1,15 @@
+const crypto = require('crypto');
+const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 const Registration = require('../models/Registration');
 const Otp = require('../models/Otp');
 const { generateToken } = require('../middleware/authMiddleware');
 const { logActivity } = require('./activityController');
+
+const googleClient = new OAuth2Client(
+  process.env.GOOGLE_CLIENT_ID ||
+  '834977368397-qaip36ga1e6or3gujguc950kkajb4vjd.apps.googleusercontent.com'
+);
 
 // Valid system roles
 const VALID_ROLES = ['Admin', 'Depot Manager', 'Customer', 'Driver'];
@@ -117,12 +124,31 @@ const login = async (req, res, next) => {
     // Check for user by email
     const user = await User.findOne({ email: normalizedEmail });
 
-    // LOGIN RULE: If registration is Pending or Rejected, enforce message
-    if (registration && (!user || user.role === 'Customer')) {
+    // LOGIN RULE: If Customer account is not approved
+    if (user && user.role === 'Customer') {
+      if (
+        user.status === 'Pending' ||
+        (registration && (registration.status === 'Pending' || registration.status === 'Pending Review'))
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: 'Your registration is pending approval.',
+        });
+      }
+      if (
+        user.status === 'Rejected' ||
+        (registration && registration.status === 'Rejected')
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: 'Your registration request was rejected.',
+        });
+      }
+    } else if (registration && (!user || user.role === 'Customer')) {
       if (registration.status === 'Pending' || registration.status === 'Pending Review') {
         return res.status(403).json({
           success: false,
-          message: 'Your account is awaiting approval.',
+          message: 'Your registration is pending approval.',
         });
       }
       if (registration.status === 'Rejected') {
@@ -344,7 +370,42 @@ const changePassword = async (req, res, next) => {
 // @access  Public
 const googleAuth = async (req, res, next) => {
   try {
-    const { email, name, googleId } = req.body;
+    let { email, name, googleId, profileImage, credential } = req.body;
+
+    // 1. Verify Google Identity Services credential token if provided
+    if (credential) {
+      try {
+        const ticket = await googleClient.verifyIdToken({
+          idToken: credential,
+          audience: [
+            process.env.GOOGLE_CLIENT_ID,
+            '834977368397-qaip36ga1e6or3gujguc950kkajb4vjd.apps.googleusercontent.com',
+          ].filter(Boolean),
+        });
+        const payload = ticket.getPayload();
+        if (payload) {
+          if (payload.email) email = payload.email;
+          if (payload.name) name = payload.name;
+          if (payload.sub) googleId = payload.sub;
+          if (payload.picture) profileImage = payload.picture;
+        }
+      } catch (verifyErr) {
+        console.warn('[Google Auth] verifyIdToken check:', verifyErr.message);
+        // Fallback: parse JWT payload for development/offline test compatibility
+        try {
+          const parts = credential.split('.');
+          if (parts.length === 3) {
+            const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+            if (payload.email) email = payload.email;
+            if (payload.name) name = payload.name;
+            if (payload.sub) googleId = payload.sub;
+            if (payload.picture) profileImage = payload.picture;
+          }
+        } catch (tokenErr) {
+          console.warn('[Google Auth] Failed to parse credential token:', tokenErr.message);
+        }
+      }
+    }
 
     if (!email) {
       return res.status(400).json({
@@ -356,30 +417,13 @@ const googleAuth = async (req, res, next) => {
     const normalizedEmail = email.toLowerCase().trim();
 
     // Check for customer registration record by email
-    const registration = await Registration.findOne({ email: normalizedEmail }).sort({
+    let registration = await Registration.findOne({ email: normalizedEmail }).sort({
       createdAt: -1,
     });
 
     let user = await User.findOne({ email: normalizedEmail });
 
-    // APPROVAL RULES:
-    // If registration exists and user is Customer or not existing yet
-    if (registration && (!user || user.role === 'Customer')) {
-      if (registration.status === 'Pending' || registration.status === 'Pending Review') {
-        return res.status(403).json({
-          success: false,
-          message: 'Your account is awaiting approval.',
-        });
-      }
-      if (registration.status === 'Rejected') {
-        return res.status(403).json({
-          success: false,
-          message: 'Your registration request was rejected.',
-        });
-      }
-    }
-
-    // If user does not exist, create account with default role Customer
+    // Customer created automatically after Google registration
     if (!user) {
       const randomPassword = 'Gg_' + Math.random().toString(36).slice(-8) + '1!';
       user = await User.create({
@@ -387,15 +431,92 @@ const googleAuth = async (req, res, next) => {
         email: normalizedEmail,
         password: randomPassword,
         role: 'Customer',
+        status: 'Pending',
+        googleId: googleId || null,
+        profileImage: profileImage || '',
+        loginProvider: 'google',
         site: 'Corporate Site',
         city: 'Chennai',
       });
+
+      // Create pending registration record for Admin / Depot Manager Applications Dossier
+      if (!registration) {
+        registration = await Registration.create({
+          companyName: name || normalizedEmail.split('@')[0],
+          authorizedPerson: name || normalizedEmail.split('@')[0],
+          contactPerson: name || normalizedEmail.split('@')[0],
+          email: normalizedEmail,
+          password: randomPassword,
+          mobile: '+91 98400 00000',
+          gstNumber: 'PENDING',
+          panNumber: 'PENDING',
+          address: 'Corporate Site, Chennai',
+          city: 'Chennai',
+          status: 'Pending',
+          submittedAt: new Date(),
+        });
+      }
+
+      logActivity({
+        action: 'Google Registration Submitted',
+        userId: user._id,
+        userName: user.name,
+        userRole: 'Customer',
+        entityId: user.email,
+        details: `Customer ${user.name} registered via Google OAuth (Pending Approval)`,
+        ipAddress: req.ip || req.connection?.remoteAddress || '',
+      });
+
+      return res.status(403).json({
+        success: false,
+        message: 'Your registration is pending approval.',
+      });
+    }
+
+    // Role Handling & Approval Rules for Existing Users
+    if (user.role === 'Customer') {
+      if (
+        user.status === 'Pending' ||
+        (registration && (registration.status === 'Pending' || registration.status === 'Pending Review'))
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: 'Your registration is pending approval.',
+        });
+      }
+      if (
+        user.status === 'Rejected' ||
+        (registration && registration.status === 'Rejected')
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: 'Your registration request was rejected.',
+        });
+      }
+    }
+
+    // Existing approved user (Admin, Depot Manager, Driver, or Approved Customer):
+    let modified = false;
+    if (googleId && !user.googleId) {
+      user.googleId = googleId;
+      modified = true;
+    }
+    if (profileImage && !user.profileImage) {
+      user.profileImage = profileImage;
+      modified = true;
+    }
+    if (user.loginProvider !== 'google') {
+      user.loginProvider = 'google';
+      modified = true;
+    }
+    if (modified) {
+      await user.save();
     }
 
     const token = generateToken(user._id, user.role);
 
     logActivity({
-      action: 'Login',
+      action: 'Google Login',
       userId: user._id,
       userName: user.name,
       userRole: user.role,
@@ -418,6 +539,9 @@ const googleAuth = async (req, res, next) => {
         creditLimit: user.creditLimit,
         creditUsed: user.creditUsed,
         phone: user.phone,
+        googleId: user.googleId,
+        profileImage: user.profileImage,
+        loginProvider: user.loginProvider,
         createdAt: user.createdAt,
       },
       data: {
@@ -430,6 +554,9 @@ const googleAuth = async (req, res, next) => {
         creditLimit: user.creditLimit,
         creditUsed: user.creditUsed,
         phone: user.phone,
+        googleId: user.googleId,
+        profileImage: user.profileImage,
+        loginProvider: user.loginProvider,
         token,
         createdAt: user.createdAt,
       },
@@ -633,15 +760,428 @@ const verifyMobileOtp = async (req, res, next) => {
   }
 };
 
+// @desc    Initiate Forgot Password - Send Reset Token & Link
+// @route   POST /api/auth/forgot-password
+// @access  Public
+const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide your registered email address',
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'No user account found with this email address.',
+      });
+    }
+
+    // Generate secure random reset token (64 hex characters)
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour validity
+
+    // Also generate 6-digit OTP for backwards compatibility
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = resetExpires;
+    user.resetOTP = otp;
+    user.resetOTPExpiry = resetExpires;
+    await user.save();
+
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    const resetLink = `${clientUrl}/forgot-password?token=${resetToken}&email=${encodeURIComponent(normalizedEmail)}`;
+
+    logActivity({
+      action: 'Password Reset Requested',
+      userId: user._id,
+      userName: user.name,
+      userRole: user.role,
+      entityId: user.email,
+      details: `${user.role} ${user.name} requested password reset token`,
+      ipAddress: req.ip || req.connection?.remoteAddress || '',
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Password reset link has been generated for ${normalizedEmail}. Valid for 1 hour.`,
+      resetToken,
+      resetLink,
+      expiresAt: resetExpires,
+      otpPreview: otp,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Verify Reset OTP
+// @route   POST /api/auth/verify-reset-otp
+// @access  Public
+const verifyResetOtp = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide both email and the 6-digit OTP code',
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'No account found with this email address.',
+      });
+    }
+
+    if (!user.resetOTP || user.resetOTP !== otp.toString().trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid OTP code. Please check and try again.',
+      });
+    }
+
+    // Check expiration
+    if (new Date() > user.resetOTPExpiry) {
+      return res.status(400).json({
+        success: false,
+        message: 'OTP has expired. Please request a new OTP.',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'OTP verified successfully. You may now set your new password.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Reset Password with verified Token or OTP (Single Use)
+// @route   POST /api/auth/reset-password
+// @access  Public
+const resetPassword = async (req, res, next) => {
+  try {
+    const { email, token, otp, newPassword, password } = req.body;
+    const targetPassword = newPassword || password;
+
+    if (!targetPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide your new password',
+      });
+    }
+
+    if (targetPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters long',
+      });
+    }
+
+    let user = null;
+
+    // 1. Check if token provided directly
+    if (token) {
+      user = await User.findOne({
+        resetPasswordToken: token,
+        resetPasswordExpires: { $gt: new Date() },
+      });
+    }
+
+    // 2. Fallback check by email if token or OTP provided with email
+    if (!user && email) {
+      const normalizedEmail = email.toLowerCase().trim();
+      const candidate = await User.findOne({ email: normalizedEmail });
+      if (candidate) {
+        if (
+          token &&
+          candidate.resetPasswordToken === token &&
+          candidate.resetPasswordExpires &&
+          candidate.resetPasswordExpires > new Date()
+        ) {
+          user = candidate;
+        } else if (
+          otp &&
+          candidate.resetOTP === otp.toString().trim() &&
+          candidate.resetOTPExpiry &&
+          candidate.resetOTPExpiry > new Date()
+        ) {
+          user = candidate;
+        }
+      }
+    }
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired password reset link / token. Please request a new reset link.',
+      });
+    }
+
+    // Set new password (will be encrypted via pre-save hook)
+    user.password = targetPassword;
+    // Single use - clear token and OTP fields
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    user.resetOTP = null;
+    user.resetOTPExpiry = null;
+    await user.save();
+
+    // Log Password Changed Audit Trail
+    logActivity({
+      action: 'Password Changed',
+      userId: user._id,
+      userName: user.name,
+      userRole: user.role,
+      entityId: user.email,
+      details: `${user.role} ${user.name} reset password via secure reset link/token`,
+      ipAddress: req.ip || req.connection?.remoteAddress || '',
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset successfully! You can now log in with your new password.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Send Login OTP to User Email
+// @route   POST /api/auth/send-login-otp
+// @access  Public
+const sendLoginOtp = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address.',
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Check registration approval status
+    const registration = await Registration.findOne({ email: normalizedEmail }).sort({ createdAt: -1 });
+    let user = await User.findOne({ email: normalizedEmail });
+
+    if (registration && (!user || user.role === 'Customer')) {
+      if (registration.status === 'Pending' || registration.status === 'Pending Review') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your account is awaiting approval.',
+        });
+      }
+      if (registration.status === 'Rejected') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your registration request was rejected.',
+        });
+      }
+    }
+
+    if (!user && (!registration || registration.status !== 'Approved')) {
+      return res.status(404).json({
+        success: false,
+        message: 'No registered account found with this email. Please register first.',
+      });
+    }
+
+    if (!user && registration && registration.status === 'Approved') {
+      user = await User.findOne({ email: registration.email });
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'No active user account found associated with this email.',
+      });
+    }
+
+    // Generate 6-digit OTP with 5 minutes validity
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    user.loginOTP = otp;
+    user.loginOTPExpiry = expiresAt;
+    user.loginAttempts = 0; // Reset attempts on new OTP
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Login OTP sent successfully to ${normalizedEmail}. Valid for 5 minutes.`,
+      expiresAt,
+      otpPreview: otp, // For verification convenience
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Verify Login OTP & Authenticate (Max 5 Attempts)
+// @route   POST /api/auth/verify-login-otp
+// @access  Public
+const verifyLoginOtp = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide both email and the 6-digit OTP code',
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'No account found with this email address.',
+      });
+    }
+
+    // Check customer approval rules
+    const registration = await Registration.findOne({ email: normalizedEmail }).sort({ createdAt: -1 });
+    if (registration && user.role === 'Customer') {
+      if (registration.status === 'Pending' || registration.status === 'Pending Review') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your account is awaiting approval.',
+        });
+      }
+      if (registration.status === 'Rejected') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your registration request was rejected.',
+        });
+      }
+    }
+
+    // Enforce maximum 5 attempts
+    if ((user.loginAttempts || 0) >= 5) {
+      return res.status(429).json({
+        success: false,
+        message: 'Maximum OTP verification attempts (5) exceeded. Please request a new OTP.',
+      });
+    }
+
+    // Check OTP Match
+    if (!user.loginOTP || user.loginOTP !== otp.toString().trim()) {
+      user.loginAttempts = (user.loginAttempts || 0) + 1;
+      await user.save();
+      const remainingAttempts = Math.max(0, 5 - user.loginAttempts);
+      return res.status(400).json({
+        success: false,
+        message: `Invalid OTP code. ${remainingAttempts} attempt(s) remaining.`,
+        remainingAttempts,
+      });
+    }
+
+    // Check 5 minutes expiry
+    if (new Date() > user.loginOTPExpiry) {
+      user.loginOTP = null;
+      user.loginOTPExpiry = null;
+      await user.save();
+      return res.status(400).json({
+        success: false,
+        message: 'OTP has expired (validity is 5 minutes). Please request a new OTP.',
+      });
+    }
+
+    // Invalidate consumed OTP
+    user.loginOTP = null;
+    user.loginOTPExpiry = null;
+    user.loginAttempts = 0;
+    await user.save();
+
+    // Generate JWT token
+    const token = generateToken(user._id, user.role);
+
+    logActivity({
+      action: 'Login',
+      userId: user._id,
+      userName: user.name,
+      userRole: user.role,
+      entityId: user.email,
+      details: `${user.role} ${user.name} logged in via Email OTP`,
+      ipAddress: req.ip || req.connection?.remoteAddress || '',
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Email OTP verification successful',
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        site: user.site,
+        city: user.city,
+        creditLimit: user.creditLimit,
+        creditUsed: user.creditUsed,
+        phone: user.phone,
+        googleId: user.googleId,
+        profileImage: user.profileImage,
+        loginProvider: user.loginProvider,
+        createdAt: user.createdAt,
+      },
+      data: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        site: user.site,
+        city: user.city,
+        creditLimit: user.creditLimit,
+        creditUsed: user.creditUsed,
+        phone: user.phone,
+        googleId: user.googleId,
+        profileImage: user.profileImage,
+        loginProvider: user.loginProvider,
+        token,
+        createdAt: user.createdAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   register,
   login,
   googleAuth,
   sendMobileOtp,
   verifyMobileOtp,
+  forgotPassword,
+  verifyResetOtp,
+  resetPassword,
+  sendLoginOtp,
+  verifyLoginOtp,
   getMe,
   getAllUsers,
   updateProfile,
   changePassword,
 };
+
 

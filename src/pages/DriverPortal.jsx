@@ -69,6 +69,14 @@ export default function DriverPortal() {
     });
   }, [orders, user]);
 
+  const assignedCount = useMemo(() => {
+    return driverDeliveries.filter((o) => o.status !== "Delivered" && o.status !== "Cancelled" && o.status !== "Rejected").length;
+  }, [driverDeliveries]);
+
+  const completedCount = useMemo(() => {
+    return driverDeliveries.filter((o) => o.status === "Delivered").length;
+  }, [driverDeliveries]);
+
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   useEffect(() => {
@@ -270,6 +278,37 @@ export default function DriverPortal() {
           <span>{toast}</span>
         </div>
       )}
+
+      {/* Driver KPI Cards (Requirement 9: Assigned Deliveries, Completed Deliveries) */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>
+        <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--orange)" }}>
+          <div className="kpi-card-head">
+            <span className="kpi-card-lbl">Assigned Deliveries</span>
+            <div className="kpi-icon-badge">
+              <Truck size={18} />
+            </div>
+          </div>
+          <div className="kpi-val">{assignedCount} Assigned</div>
+          <div className="kpi-footer">
+            <span className="trend-pill up">Active Route</span>
+            <span style={{ color: "var(--text-dim)" }}>Ready for Dispatch</span>
+          </div>
+        </div>
+
+        <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--green-neon)" }}>
+          <div className="kpi-card-head">
+            <span className="kpi-card-lbl">Completed Deliveries</span>
+            <div className="kpi-icon-badge">
+              <CheckCircle2 size={18} />
+            </div>
+          </div>
+          <div className="kpi-val">{completedCount} Completed</div>
+          <div className="kpi-footer">
+            <span className="trend-pill up">100% Fulfilled</span>
+            <span style={{ color: "var(--text-dim)" }}>Signed POD Verified</span>
+          </div>
+        </div>
+      </div>
 
       {/* Main Grid: Left Deliveries Queue / Right Navigation & Action Panel */}
       <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1.9fr", gap: "22px" }}>

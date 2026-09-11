@@ -89,14 +89,21 @@ app.use('/api/activities', activityRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
+const http = require('http');
+const { initSocket } = require('./config/socket');
+
 const PORT = process.env.PORT || 5000;
 
-// Connect database before app.listen()
+// Create HTTP server and attach Socket.IO
+const httpServer = http.createServer(app);
+initSocket(httpServer);
+
+// Connect database before listening
 const startServer = async () => {
   try {
     await connectDB();
-    const server = app.listen(PORT, () => {
-      console.log(`[FDMS Backend] Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+    const server = httpServer.listen(PORT, () => {
+      console.log(`[FDMS Backend] Server running with Socket.IO in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
     });
     return server;
   } catch (error) {

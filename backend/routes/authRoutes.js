@@ -6,6 +6,11 @@ const {
   googleAuth,
   sendMobileOtp,
   verifyMobileOtp,
+  forgotPassword,
+  verifyResetOtp,
+  resetPassword,
+  sendLoginOtp,
+  verifyLoginOtp,
   getMe,
   getAllUsers,
   updateProfile,
@@ -19,6 +24,15 @@ router.post('/login', login);
 router.post('/google', googleAuth);
 router.post('/send-otp', sendMobileOtp);
 router.post('/verify-otp', verifyMobileOtp);
+
+// Forgot Password Workflow
+router.post('/forgot-password', forgotPassword);
+router.post('/verify-reset-otp', verifyResetOtp);
+router.post('/reset-password', resetPassword);
+
+// Email OTP Login Workflow
+router.post('/send-login-otp', sendLoginOtp);
+router.post('/verify-login-otp', verifyLoginOtp);
 
 // Protected routes (Any authenticated user)
 router.get('/me', protect, getMe);

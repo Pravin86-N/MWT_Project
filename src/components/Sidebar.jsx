@@ -18,6 +18,7 @@ import {
   Sparkles,
   Zap,
   FileCheck,
+  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
@@ -51,7 +52,7 @@ export default function Sidebar({ isCollapsed, toggleSidebar }) {
       ];
 
   const secondaryLinks = [
-    ...(!isCustomer && !isDriver ? [{ to: "/customer-portal", label: "Customer View", icon: Building2 }] : []),
+    ...(!isCustomer && !isDriver ? [{ to: "/customer-portal", label: "Customer View", icon: Building2 }, { to: "/audit-logs", label: "Audit Logs", icon: ShieldCheck }] : []),
     { to: "/settings", key: "nav_settings", icon: SettingsIcon },
   ];
 
