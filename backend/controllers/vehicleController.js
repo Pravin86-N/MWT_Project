@@ -153,9 +153,9 @@ const updateVehicleLocation = async (req, res, next) => {
       timestamp: new Date(),
     });
 
-    // Keep history capped to last 100 points
-    if (vehicle.locationHistory.length > 100) {
-      vehicle.locationHistory = vehicle.locationHistory.slice(-100);
+    // Keep history capped to last 1000 points as per requirement
+    if (vehicle.locationHistory.length > 1000) {
+      vehicle.locationHistory = vehicle.locationHistory.slice(-1000);
     }
 
     await vehicle.save();

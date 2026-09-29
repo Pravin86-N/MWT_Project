@@ -35,6 +35,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState("");
 
   // Google OAuth Login State
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -78,9 +79,10 @@ export default function Login() {
   const handleRoleRedirect = useCallback(
     (user) => {
       if (!user) return;
-      if (user.role === "Customer") {
+      const role = (user.role || "").toLowerCase();
+      if (role === "customer") {
         navigate("/customer-portal", { replace: true });
-      } else if (user.role === "Driver") {
+      } else if (role === "driver") {
         navigate("/driver-portal", { replace: true });
       } else {
         // Admin or Depot Manager -> Dashboard
@@ -90,18 +92,50 @@ export default function Login() {
     [navigate]
   );
 
+  // If already authenticated, redirect to appropriate role dashboard
+  useEffect(() => {
+    if (state.status === "authenticated" && state.user) {
+      console.log("[Auth] User already authenticated. Redirecting to dashboard...");
+      handleRoleRedirect(state.user);
+    }
+  }, [state.status, state.user, handleRoleRedirect]);
+
   // 1. Standard Email + Password Login
   const handleSubmit = useCallback(
     async (e) => {
       e.preventDefault();
-      if (!email.trim() || !password) return;
+      setLoginError("");
 
+      if (!email.trim() || !password) {
+        setLoginError("Please enter both email and password.");
+        return;
+      }
+
+      console.log("[Auth] Login request sent:", { email: email.trim() });
       const res = await login(email.trim(), password);
+      console.log("[Auth] Login response received:", res);
+
       if (res.ok && res.user) {
+        const role = (res.user.role || "").toLowerCase();
+        const targetPath =
+          role === "customer"
+            ? "/customer-portal"
+            : role === "driver"
+            ? "/driver-portal"
+            : "/dashboard";
+
+        console.log("[Auth] User role:", res.user.role);
+        console.log("[Auth] Token stored:", !!(res.token || res.user.token));
+        console.log("[Auth] Redirect target:", targetPath);
+
         handleRoleRedirect(res.user);
+      } else {
+        const errMsg = res.error || state.error || "Authentication failed. Please check your credentials.";
+        console.warn("[Auth] Login failed:", errMsg);
+        setLoginError(errMsg);
       }
     },
-    [email, password, login, handleRoleRedirect]
+    [email, password, login, handleRoleRedirect, state.error]
   );
 
   // 2. Real Google Identity Credential Handler
@@ -425,9 +459,9 @@ export default function Login() {
             </div>
 
             {/* Invalid Credentials Banner */}
-            {state.status === "error" && (
+            {(loginError || state.status === "error") && (
               <div className="auth-error" style={{ fontSize: "13px", padding: "10px 14px", borderRadius: "10px" }}>
-                {state.error || t("invalidCredentials")}
+                {loginError || state.error || t("invalidCredentials")}
               </div>
             )}
 

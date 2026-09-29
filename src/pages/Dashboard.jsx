@@ -64,6 +64,11 @@ export default function Dashboard() {
   const [appStats, setAppStats] = useState({ pending: 0, approved: 0, rejected: 0 });
   const searchRef = useRef(null);
 
+  // Debug log dashboard loaded
+  useEffect(() => {
+    console.log("[Dashboard] Dashboard loaded successfully - User:", user?.email, "Role:", user?.role);
+  }, [user]);
+
   // Fetch aggregated dashboard metrics, live activities, drivers, vehicles, and customers from backend API
   useEffect(() => {
     let mounted = true;

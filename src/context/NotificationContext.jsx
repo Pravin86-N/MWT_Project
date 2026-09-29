@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
-import io from "socket.io-client";
+import { getSocket } from "../services/socket";
 import { notificationApi } from "../services/api";
 import { useAuth } from "./AuthContext";
 
@@ -56,12 +56,7 @@ export function NotificationProvider({ children }) {
 
   // Real-Time Socket.IO connection
   useEffect(() => {
-    const socketUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
-    const socket = io(socketUrl, {
-      transports: ["websocket", "polling"],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 2000,
-    });
+    const socket = getSocket();
     socketRef.current = socket;
 
     socket.on("connect", () => {

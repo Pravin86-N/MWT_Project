@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { MapContainer, TileLayer, Marker, Polyline, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -18,12 +18,35 @@ import {
   RotateCcw,
   AlertCircle,
   FileCheck,
+  Radio,
+  Play,
+  Square,
+  WifiOff,
+  Compass,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useOrders } from "../context/OrdersContext";
 import { useNotifications } from "../context/NotificationContext";
-import { vehicleApi } from "../services/api";
+import { vehicleApi, driverApi } from "../services/api";
 import StatusPill from "../components/StatusPill";
+
+// Smooth Leaflet camera follow component for driver
+function MapRecenter({ center }) {
+  const map = useMap();
+  useEffect(() => {
+    if (
+      center &&
+      Array.isArray(center) &&
+      Number.isFinite(Number(center[0])) &&
+      Number.isFinite(Number(center[1]))
+    ) {
+      try {
+        map.panTo(center, { animate: true, duration: 0.8 });
+      } catch (e) {}
+    }
+  }, [center, map]);
+  return null;
+}
 
 // Custom Leaflet Markers
 const createDepotIcon = () =>
@@ -79,6 +102,11 @@ export default function DriverPortal() {
 
   const [selectedOrder, setSelectedOrder] = useState(null);
 
+  // Debug log driver portal loaded
+  useEffect(() => {
+    console.log("[Dashboard] Dashboard loaded (Driver Portal) - User:", user?.email, "Role:", user?.role);
+  }, [user]);
+
   useEffect(() => {
     if (driverDeliveries.length > 0) {
       if (!selectedOrder || !driverDeliveries.some((d) => (d.id || d._id) === (selectedOrder.id || selectedOrder._id))) {
@@ -91,7 +119,11 @@ export default function DriverPortal() {
 
   // Live GPS Coordinates for driver's vehicle
   const [gpsCoord, setGpsCoord] = useState([13.0827, 80.2707]);
-  const [speed, setSpeed] = useState(48);
+  const [speed, setSpeed] = useState(0);
+  const [accuracy, setAccuracy] = useState(0);
+  const [isTracking, setIsTracking] = useState(false);
+  const [gpsError, setGpsError] = useState(null);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [deliveryStep, setDeliveryStep] = useState("idle"); // 'idle' | 'in_transit' | 'reached' | 'delivering'
   const [proofFile, setProofFile] = useState(null);
   const [signatureData, setSignatureData] = useState("");
@@ -100,32 +132,151 @@ export default function DriverPortal() {
 
   const canvasRef = useRef(null);
   const isDrawing = useRef(false);
+  const watchIdRef = useRef(null);
+  const sendIntervalRef = useRef(null);
+  const latestCoordsRef = useRef({ lat: 13.0827, lng: 80.2707, speed: 0, accuracy: 0, heading: 0 });
 
-  // 30-second GPS Ping Simulation to Backend
+  // Monitor network connectivity (Requirement 9: Internet disconnected)
   useEffect(() => {
-    const interval = setInterval(() => {
-      setGpsCoord((prev) => {
-        const nextLat = Number((prev[0] + (Math.random() - 0.5) * 0.003).toFixed(5));
-        const nextLng = Number((prev[1] + (Math.random() - 0.5) * 0.003).toFixed(5));
-        const currentSpeed = Math.floor(40 + Math.random() * 25);
+    const handleOnline = () => {
+      setIsOnline(true);
+      setToast("🌐 Internet connection restored.");
+      setTimeout(() => setToast(""), 4000);
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // Transmit location to backend API (POST /api/drivers/location) every 5 seconds (Requirement 2 & 3)
+  const transmitLocation = useCallback(async (lat, lng, spd, acc, head) => {
+    const currentLat = lat ?? latestCoordsRef.current.lat;
+    const currentLng = lng ?? latestCoordsRef.current.lng;
+    const currentSpeed = spd ?? latestCoordsRef.current.speed;
+
+    const payload = {
+      driverId: user?._id || user?.id || null,
+      driverName: user?.name || "R. Rangarajan",
+      vehicleId: selectedOrder?.vehicle || user?.vehicle || "TN-01-FL-1001",
+      latitude: currentLat,
+      longitude: currentLng,
+      speed: currentSpeed,
+      accuracy: acc ?? latestCoordsRef.current.accuracy,
+      heading: head ?? latestCoordsRef.current.heading,
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      await driverApi.sendLocation(payload);
+    } catch (err) {
+      console.warn("[DriverPortal] POST /api/drivers/location error:", err.message);
+    }
+  }, [user, selectedOrder]);
+
+  // Start GPS Tracking (Requirement 1 & 2)
+  const handleStartTracking = useCallback(() => {
+    if (!navigator.geolocation) {
+      setGpsError("GPS Geolocation is not supported by your current browser or mobile device.");
+      return;
+    }
+
+    setGpsError(null);
+    setIsTracking(true);
+    setToast("📡 GPS Tracking initialized. Acquiring high-precision satellite fix...");
+    setTimeout(() => setToast(""), 4000);
+
+    // Clear existing watch if any
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+    }
+
+    // Call navigator.geolocation.watchPosition() (Requirement 2)
+    const id = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude, speed: s, accuracy: acc, heading: head } = position.coords;
+        const currentSpeed = s != null && !isNaN(s) ? Math.round(s * 3.6) : (speed > 0 ? speed : 45);
+        const currentAcc = Math.round(acc || 5);
+
+        setGpsCoord([latitude, longitude]);
         setSpeed(currentSpeed);
+        setAccuracy(currentAcc);
+        setGpsError(null);
 
-        // Ping location to backend API
-        vehicleApi.getVehicles().then((res) => {
-          if (res?.data && res.data[0]?._id) {
-            vehicleApi.updateLocation(res.data[0]._id, {
-              latitude: nextLat,
-              longitude: nextLng,
-              speed: currentSpeed,
-            }).catch(() => {});
-          }
-        }).catch(() => {});
+        latestCoordsRef.current = {
+          lat: latitude,
+          lng: longitude,
+          speed: currentSpeed,
+          accuracy: currentAcc,
+          heading: head || 0,
+        };
+      },
+      (error) => {
+        console.warn("[DriverPortal] watchPosition error:", error);
+        if (error.code === 1) {
+          // PERMISSION_DENIED (Requirement 9)
+          setGpsError("GPS permission was denied. Please allow location access in your browser or device settings.");
+          handleStopTracking();
+        } else if (error.code === 2) {
+          // POSITION_UNAVAILABLE (Requirement 9)
+          setGpsError("GPS position unavailable. Please ensure device location / GPS hardware is turned on.");
+        } else if (error.code === 3) {
+          // TIMEOUT (Requirement 9)
+          setGpsError("GPS satellite signal timed out. Retrying connection...");
+        } else {
+          setGpsError(`GPS Error: ${error.message}`);
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 10000,
+      }
+    );
 
-        return [nextLat, nextLng];
-      });
-    }, 30000);
+    watchIdRef.current = id;
 
-    return () => clearInterval(interval);
+    // Send location updates to backend every 5 seconds (Requirement 2 & 3)
+    if (sendIntervalRef.current) clearInterval(sendIntervalRef.current);
+    sendIntervalRef.current = setInterval(() => {
+      transmitLocation();
+    }, 5000);
+
+    // Initial immediate transmit
+    transmitLocation();
+  }, [speed, transmitLocation]);
+
+  // Stop GPS Tracking (Requirement 1)
+  const handleStopTracking = useCallback(() => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (sendIntervalRef.current !== null) {
+      clearInterval(sendIntervalRef.current);
+      sendIntervalRef.current = null;
+    }
+    setIsTracking(false);
+    setToast("🛑 GPS tracking stopped. Device is now in standby.");
+    setTimeout(() => setToast(""), 4000);
+  }, []);
+
+  // Cleanup on component unmount
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+      if (sendIntervalRef.current !== null) {
+        clearInterval(sendIntervalRef.current);
+      }
+    };
   }, []);
 
   // Action: Start Delivery
@@ -260,17 +411,100 @@ export default function DriverPortal() {
           </p>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <div className="metric-chip" style={{ background: "var(--panel)", padding: "10px 16px", borderRadius: "12px", border: "1px solid var(--line)" }}>
-            <span style={{ fontSize: "11px", color: "var(--text-dim)", textTransform: "uppercase" }}>GPS Ping</span>
-            <strong style={{ display: "block", color: "var(--green-neon)", fontSize: "14px" }}>Active (30s)</strong>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          {/* Coordinates Readout (Requirement 1) */}
+          <div className="metric-chip" style={{ background: "var(--panel)", padding: "10px 14px", borderRadius: "12px", border: "1px solid var(--line)" }}>
+            <span style={{ fontSize: "10px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: "700" }}>Coordinates</span>
+            <strong style={{ display: "block", color: "var(--orange)", fontSize: "12px", fontFamily: "monospace" }}>
+              {gpsCoord[0].toFixed(5)}, {gpsCoord[1].toFixed(5)}
+            </strong>
           </div>
-          <div className="metric-chip" style={{ background: "var(--panel)", padding: "10px 16px", borderRadius: "12px", border: "1px solid var(--line)" }}>
-            <span style={{ fontSize: "11px", color: "var(--text-dim)", textTransform: "uppercase" }}>Speed</span>
-            <strong style={{ display: "block", color: "var(--blue)", fontSize: "14px" }}>{speed} km/h</strong>
+
+          {/* Speed chip */}
+          <div className="metric-chip" style={{ background: "var(--panel)", padding: "10px 14px", borderRadius: "12px", border: "1px solid var(--line)" }}>
+            <span style={{ fontSize: "10px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: "700" }}>Speed</span>
+            <strong style={{ display: "block", color: "var(--blue)", fontSize: "13px" }}>{speed} km/h</strong>
           </div>
+
+          {/* Tracking Status chip */}
+          <div className="metric-chip" style={{ background: "var(--panel)", padding: "10px 14px", borderRadius: "12px", border: "1px solid var(--line)" }}>
+            <span style={{ fontSize: "10px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: "700" }}>GPS Status</span>
+            <strong style={{ display: "block", color: isTracking ? "var(--green-neon)" : "var(--amber)", fontSize: "13px" }}>
+              {isTracking ? "● Live (5s)" : "○ Standby"}
+            </strong>
+          </div>
+
+          {/* Start / Stop Tracking Buttons (Requirement 1) */}
+          {!isTracking ? (
+            <button
+              type="button"
+              id="start-tracking-btn"
+              onClick={handleStartTracking}
+              style={{
+                background: "var(--green-neon)",
+                border: "1px solid var(--green-neon)",
+                color: "#000",
+                fontWeight: "800",
+                padding: "10px 16px",
+                borderRadius: "12px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "13px",
+                cursor: "pointer",
+                boxShadow: "0 0 12px rgba(16, 185, 129, 0.4)",
+              }}
+            >
+              <Navigation size={16} /> Start Tracking
+            </button>
+          ) : (
+            <button
+              type="button"
+              id="stop-tracking-btn"
+              onClick={handleStopTracking}
+              style={{
+                background: "rgba(239, 68, 68, 0.2)",
+                border: "1px solid #EF4444",
+                color: "#EF4444",
+                fontWeight: "800",
+                padding: "10px 16px",
+                borderRadius: "12px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "13px",
+                cursor: "pointer",
+              }}
+            >
+              <AlertCircle size={16} /> Stop Tracking
+            </button>
+          )}
         </div>
       </div>
+
+      {/* GPS Error Handling: Permission Denied / Signal Unavailable (Requirement 9) */}
+      {gpsError && (
+        <div style={{ background: "rgba(239, 68, 68, 0.15)", border: "1px solid #EF4444", color: "#FFF", padding: "12px 18px", borderRadius: "12px", fontWeight: "600", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <AlertCircle size={20} style={{ color: "#EF4444", flexShrink: 0 }} />
+            <span style={{ fontSize: "13px" }}>{gpsError}</span>
+          </div>
+          <button
+            onClick={() => setGpsError(null)}
+            style={{ background: "none", border: "none", color: "#FFF", cursor: "pointer", fontSize: "16px", padding: "0 4px" }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Internet Disconnected Alert (Requirement 9) */}
+      {!isOnline && (
+        <div style={{ background: "rgba(245, 158, 11, 0.15)", border: "1px solid #F59E0B", color: "var(--text)", padding: "12px 18px", borderRadius: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "10px" }}>
+          <WifiOff size={20} style={{ color: "#F59E0B", flexShrink: 0 }} />
+          <span style={{ fontSize: "13px" }}>Internet disconnected. GPS coordinates are being held and will transmit automatically once connection is restored.</span>
+        </div>
+      )}
 
       {toast && (
         <div style={{ background: "rgba(16, 185, 129, 0.15)", border: "1px solid var(--green-neon)", color: "var(--text)", padding: "12px 18px", borderRadius: "12px", fontWeight: "600", display: "flex", alignItems: "center", gap: "10px" }}>
@@ -388,10 +622,11 @@ export default function DriverPortal() {
             <div style={{ height: "300px", borderRadius: "14px", overflow: "hidden", border: "1px solid var(--line)" }}>
               <MapContainer
                 center={gpsCoord}
-                zoom={12}
+                zoom={13}
                 zoomControl={false}
                 style={{ width: "100%", height: "100%" }}
               >
+                <MapRecenter center={gpsCoord} />
                 <TileLayer
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'

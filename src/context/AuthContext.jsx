@@ -3,10 +3,11 @@ import { authApi } from "../services/api";
 
 const getInitialState = () => {
   try {
-    const saved = localStorage.getItem("fdms-user");
-    const token = localStorage.getItem("fdms-token");
-    if (saved && (token || JSON.parse(saved)?.token)) {
+    const saved = localStorage.getItem("fdms-user") || localStorage.getItem("user");
+    const token = localStorage.getItem("fdms-token") || localStorage.getItem("token");
+    if (saved) {
       const parsed = JSON.parse(saved);
+      if (token && !parsed.token) parsed.token = token;
       return { status: "authenticated", user: parsed, error: null };
     }
   } catch (e) {
@@ -41,16 +42,35 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [state, dispatch] = useReducer(authReducer, undefined, getInitialState);
 
+  // Helper to store user, token, role in localStorage
+  const persistSession = useCallback((user, token) => {
+    if (token) {
+      localStorage.setItem("fdms-token", token);
+      localStorage.setItem("token", token);
+    }
+    if (user) {
+      if (token && !user.token) user.token = token;
+      localStorage.setItem("fdms-user", JSON.stringify(user));
+      localStorage.setItem("user", JSON.stringify(user));
+      if (user.role) {
+        localStorage.setItem("fdms-role", user.role);
+        localStorage.setItem("role", user.role);
+      }
+    }
+  }, []);
+
   // Restore session from localStorage and refresh from MongoDB Atlas
   useEffect(() => {
-    const saved = localStorage.getItem("fdms-user");
-    const token = localStorage.getItem("fdms-token");
+    const saved = localStorage.getItem("fdms-user") || localStorage.getItem("user");
+    const token = localStorage.getItem("fdms-token") || localStorage.getItem("token");
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        if (token && !parsed.token) parsed.token = token;
         dispatch({ type: "RESTORE_SESSION", payload: parsed });
       } catch (e) {
         localStorage.removeItem("fdms-user");
+        localStorage.removeItem("user");
       }
     }
 
@@ -60,91 +80,84 @@ export function AuthProvider({ children }) {
         .then((res) => {
           const freshUser = res.user || res.data;
           if (freshUser) {
-            freshUser.token = token;
-            localStorage.setItem("fdms-user", JSON.stringify(freshUser));
+            persistSession(freshUser, token);
             dispatch({ type: "RESTORE_SESSION", payload: freshUser });
           }
         })
         .catch(() => {
-          // Token expired or invalid
-          console.warn("[Auth] Session expired or invalid");
+          console.warn("[Auth] Session validation request failed or offline");
         });
     }
-  }, []);
+  }, [persistSession]);
 
   const login = useCallback(async (email, password) => {
     dispatch({ type: "LOGIN_START" });
     try {
+      console.log("[Auth] Dispatching login request to API...");
       const res = await authApi.login(email, password);
-      const user = res.user || res.data || res;
-      if (res.token) {
-        user.token = res.token;
-        localStorage.setItem("fdms-token", res.token);
-      }
-      localStorage.setItem("fdms-user", JSON.stringify(user));
+      const user = res.user || res.data?.user || res.data || res;
+      const token = res.token || res.data?.token || user.token;
+
+      persistSession(user, token);
+      console.log("[Auth] Login successful. Role:", user.role);
       dispatch({ type: "LOGIN_SUCCESS", payload: user });
-      return { ok: true, user };
+      return { ok: true, user, token };
     } catch (err) {
       const errMsg = err.response?.data?.message || err.message || "Invalid email or password.";
+      console.error("[Auth] Login error:", errMsg);
       dispatch({ type: "LOGIN_FAILURE", payload: errMsg });
       return { ok: false, error: errMsg };
     }
-  }, []);
+  }, [persistSession]);
 
   const loginWithGoogle = useCallback(async (googleData) => {
     dispatch({ type: "LOGIN_START" });
     try {
       const res = await authApi.googleLogin(googleData);
-      const user = res.user || res.data || res;
-      if (res.token) {
-        user.token = res.token;
-        localStorage.setItem("fdms-token", res.token);
-      }
-      localStorage.setItem("fdms-user", JSON.stringify(user));
+      const user = res.user || res.data?.user || res.data || res;
+      const token = res.token || res.data?.token || user.token;
+
+      persistSession(user, token);
       dispatch({ type: "LOGIN_SUCCESS", payload: user });
-      return { ok: true, user };
+      return { ok: true, user, token };
     } catch (err) {
       const errMsg = err.response?.data?.message || err.message || "Google authentication failed.";
       dispatch({ type: "LOGIN_FAILURE", payload: errMsg });
       return { ok: false, error: errMsg };
     }
-  }, []);
+  }, [persistSession]);
 
   const loginWithOtp = useCallback(async (mobile, otp) => {
     dispatch({ type: "LOGIN_START" });
     try {
       const res = await authApi.verifyOtp(mobile, otp);
-      const user = res.user || res.data || res;
-      if (res.token) {
-        user.token = res.token;
-        localStorage.setItem("fdms-token", res.token);
-      }
-      localStorage.setItem("fdms-user", JSON.stringify(user));
+      const user = res.user || res.data?.user || res.data || res;
+      const token = res.token || res.data?.token || user.token;
+
+      persistSession(user, token);
       dispatch({ type: "LOGIN_SUCCESS", payload: user });
-      return { ok: true, user };
+      return { ok: true, user, token };
     } catch (err) {
       const errMsg = err.response?.data?.message || err.message || "OTP verification failed.";
       dispatch({ type: "LOGIN_FAILURE", payload: errMsg });
       return { ok: false, error: errMsg };
     }
-  }, []);
+  }, [persistSession]);
 
   const updateProfile = useCallback(async (profileData) => {
     try {
       const res = await authApi.updateProfile(profileData);
-      const updatedUser = res.user || res.data || res;
-      if (res.token) {
-        updatedUser.token = res.token;
-        localStorage.setItem("fdms-token", res.token);
-      }
-      localStorage.setItem("fdms-user", JSON.stringify(updatedUser));
+      const updatedUser = res.user || res.data?.user || res.data || res;
+      const token = res.token || res.data?.token || updatedUser.token;
+
+      persistSession(updatedUser, token);
       dispatch({ type: "UPDATE_USER", payload: updatedUser });
       return { ok: true, user: updatedUser, message: res.message || "Profile updated successfully" };
     } catch (err) {
       const errMsg = err.response?.data?.message || err.message || "Failed to update profile.";
       return { ok: false, error: errMsg };
     }
-  }, []);
+  }, [persistSession]);
 
   const changePassword = useCallback(async (currentPassword, newPassword) => {
     try {
@@ -158,6 +171,12 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     authApi.logout();
+    localStorage.removeItem("fdms-token");
+    localStorage.removeItem("token");
+    localStorage.removeItem("fdms-user");
+    localStorage.removeItem("user");
+    localStorage.removeItem("fdms-role");
+    localStorage.removeItem("role");
     dispatch({ type: "LOGOUT" });
   }, []);
 
@@ -165,20 +184,18 @@ export function AuthProvider({ children }) {
     dispatch({ type: "LOGIN_START" });
     try {
       const res = await authApi.verifyLoginOtp(email, otp);
-      const user = res.user || res.data || res;
-      if (res.token) {
-        user.token = res.token;
-        localStorage.setItem("fdms-token", res.token);
-      }
-      localStorage.setItem("fdms-user", JSON.stringify(user));
+      const user = res.user || res.data?.user || res.data || res;
+      const token = res.token || res.data?.token || user.token;
+
+      persistSession(user, token);
       dispatch({ type: "LOGIN_SUCCESS", payload: user });
-      return { ok: true, user };
+      return { ok: true, user, token };
     } catch (err) {
       const errMsg = err.response?.data?.message || err.message || "OTP verification failed.";
       dispatch({ type: "LOGIN_FAILURE", payload: errMsg });
       return { ok: false, error: errMsg };
     }
-  }, []);
+  }, [persistSession]);
 
   return (
     <AuthContext.Provider

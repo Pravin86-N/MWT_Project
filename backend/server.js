@@ -21,16 +21,22 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const activityRoutes = require('./routes/activityRoutes');
 const customerRoutes = require('./routes/customerRoutes');
+const gpsRoutes = require('./routes/gpsRoutes');
 
 const app = express();
 
 // Enable Cross-Origin Resource Sharing
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:5174"
-    ],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (curl, mobile apps, Postman)
+      if (!origin) return callback(null, true);
+      // Allow any localhost or 127.0.0.1 port
+      if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     credentials: true,
   })
 );
@@ -84,6 +90,7 @@ app.use('/api/pricing', pricingRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/activities', activityRoutes);
+app.use('/api/gps', gpsRoutes);
 
 // Error handling middleware
 app.use(notFound);
@@ -102,8 +109,16 @@ initSocket(httpServer);
 const startServer = async () => {
   try {
     await connectDB();
-    const server = httpServer.listen(PORT, () => {
-      console.log(`[FDMS Backend] Server running with Socket.IO in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+    httpServer.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`[FDMS Backend] Port ${PORT} is already in use.`);
+      } else {
+        console.error(`[FDMS Backend] Server error: ${err.message}`);
+      }
+      process.exit(1);
+    });
+    const server = httpServer.listen(PORT, '0.0.0.0', () => {
+      console.log(`[FDMS Backend] Server running with Socket.IO in ${process.env.NODE_ENV || 'development'} mode on port ${PORT} (0.0.0.0)`);
     });
     return server;
   } catch (error) {

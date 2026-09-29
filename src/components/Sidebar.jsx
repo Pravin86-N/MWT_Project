@@ -32,7 +32,10 @@ export default function Sidebar({ isCollapsed, toggleSidebar }) {
   const isDriver = user?.role === "Driver";
 
   const mainLinks = isCustomer
-    ? [{ to: "/customer-portal", label: "My Fuel Portal", icon: Building2 }]
+    ? [
+        { to: "/customer-portal", label: "My Fuel Portal", icon: Building2 },
+        { to: "/fleet-map", label: "Delivery Tracking Map", icon: Navigation },
+      ]
     : isDriver
     ? [
         { to: "/driver-portal", label: "My Deliveries", icon: Truck },

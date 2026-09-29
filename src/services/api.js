@@ -1,7 +1,21 @@
 import axios from "axios";
 
-// Base API URL configuration
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+// Base API URL configuration - dynamically supports local network and mobile devices
+const getApiBaseUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (typeof window !== "undefined" && window.location) {
+    const isLocalhostClient =
+      window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    if (!isLocalhostClient && envUrl && envUrl.includes("localhost")) {
+      return envUrl.replace("localhost", window.location.hostname);
+    }
+    if (!envUrl) {
+      return `${window.location.protocol}//${window.location.hostname}:5000/api`;
+    }
+  }
+  return envUrl || "http://localhost:5000/api";
+};
+const BASE_URL = getApiBaseUrl();
 
 // Create configured Axios instance
 const api = axios.create({
@@ -18,9 +32,10 @@ api.interceptors.request.use(
     // Check for direct token or token stored inside user object
     const token =
       localStorage.getItem("fdms-token") ||
+      localStorage.getItem("token") ||
       (() => {
         try {
-          const userStr = localStorage.getItem("fdms-user");
+          const userStr = localStorage.getItem("fdms-user") || localStorage.getItem("user");
           return userStr ? JSON.parse(userStr)?.token : null;
         } catch {
           return null;
@@ -71,13 +86,32 @@ api.interceptors.response.use(
    1. AUTHENTICATION SERVICES
    ========================================================================== */
 export const authApi = {
+  // Helper to persist auth tokens, user and role in localStorage
+  persistAuth: (data) => {
+    if (!data) return;
+    const token = data.token || data.data?.token;
+    const user = data.user || data.data?.user || (data.name && data.email ? data : null);
+
+    if (token) {
+      localStorage.setItem("fdms-token", token);
+      localStorage.setItem("token", token);
+    }
+    if (user) {
+      if (token && !user.token) user.token = token;
+      localStorage.setItem("fdms-user", JSON.stringify(user));
+      localStorage.setItem("user", JSON.stringify(user));
+      if (user.role) {
+        localStorage.setItem("fdms-role", user.role);
+        localStorage.setItem("role", user.role);
+      }
+    }
+  },
+
   // Login user and return JWT token
   login: async (email, password) => {
     const response = await api.post("/auth/login", { email, password });
     const data = response.data;
-    if (data.token) {
-      localStorage.setItem("fdms-token", data.token);
-    }
+    authApi.persistAuth(data);
     return data;
   },
 
@@ -185,7 +219,11 @@ export const authApi = {
   // Logout helper
   logout: () => {
     localStorage.removeItem("fdms-token");
+    localStorage.removeItem("token");
     localStorage.removeItem("fdms-user");
+    localStorage.removeItem("user");
+    localStorage.removeItem("fdms-role");
+    localStorage.removeItem("role");
   },
 };
 
@@ -628,6 +666,37 @@ export const driverApi = {
   },
   deleteDriver: async (id) => {
     const response = await api.delete(`/drivers/${id}`);
+    return response.data;
+  },
+  // Send live driver location update (POST /api/drivers/location)
+  sendLocation: async (locationData) => {
+    const response = await api.post("/drivers/location", locationData);
+    return response.data;
+  },
+  // Get driver location history for route polyline (GET /api/drivers/location/history)
+  getLocationHistory: async (params = {}) => {
+    const response = await api.get("/drivers/location/history", { params });
+    return response.data;
+  },
+};
+
+/* ==========================================================================
+   7b. GPS TELEMETRY & REAL-TIME TRACKING SERVICES
+   ========================================================================== */
+export const gpsApi = {
+  // Send live GPS coordinates to backend (POST /api/gps/update)
+  updateLocation: async (gpsData) => {
+    const response = await api.post("/gps/update", gpsData);
+    return response.data;
+  },
+  // Get all vehicles with live coordinates (GET /api/gps/vehicles)
+  getVehicleLocations: async () => {
+    const response = await api.get("/gps/vehicles");
+    return response.data;
+  },
+  // Get historical breadcrumbs for a vehicle (GET /api/gps/history/:vehicleId)
+  getVehicleHistory: async (vehicleId, params = {}) => {
+    const response = await api.get(`/gps/history/${vehicleId}`, { params });
     return response.data;
   },
 };

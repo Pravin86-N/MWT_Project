@@ -5,12 +5,7 @@ let io = null;
 const initSocket = (server) => {
   io = new Server(server, {
     cors: {
-      origin: [
-        'http://localhost:5173',
-        'http://localhost:5174',
-        'http://127.0.0.1:5173',
-        'http://127.0.0.1:5174',
-      ],
+      origin: true,
       credentials: true,
       methods: ['GET', 'POST'],
     },
@@ -35,6 +30,94 @@ const initSocket = (server) => {
       if (userId) {
         socket.join(`user:${userId}`);
         console.log(`[Socket.IO] ${socket.id} joined room: user:${userId}`);
+      }
+    });
+
+    // Join vehicle tracking room
+    socket.on('join_vehicle', (vehicleId) => {
+      if (vehicleId) {
+        socket.join(`vehicle:${vehicleId}`);
+        console.log(`[Socket.IO] ${socket.id} joined room: vehicle:${vehicleId}`);
+      }
+    });
+
+    // Allow client to emit location update over socket directly as well
+    socket.on('update_location', (data) => {
+      if (!data) return;
+      const payload = {
+        ...data,
+        timestamp: data.timestamp || new Date().toISOString(),
+      };
+      io.emit('location_update', payload);
+      io.emit('vehicle-location-update', payload);
+      if (data.vehicleId) {
+        io.to(`vehicle:${data.vehicleId}`).emit('location_update', payload);
+        io.to(`vehicle:${data.vehicleId}`).emit('vehicle-location-update', payload);
+      }
+      if (data.driverId) {
+        io.to(`driver:${data.driverId}`).emit('location_update', payload);
+      }
+    });
+
+    // Real-time GPS Tracking specification event: vehicle-location-update
+    socket.on('vehicle-location-update', async (data) => {
+      if (!data) return;
+      const lat = Number(data.latitude);
+      const lng = Number(data.longitude);
+      const vehicleId = data.vehicleId;
+      if (!vehicleId || isNaN(lat) || isNaN(lng)) return;
+
+      const payload = {
+        vehicleId,
+        latitude: lat,
+        longitude: lng,
+        speed: Number(data.speed) || 0,
+        heading: Number(data.heading) || 0,
+        timestamp: data.timestamp || new Date().toISOString(),
+      };
+
+      // Broadcast immediately to all connected clients (Admin, Manager, Customer)
+      io.emit('vehicle-location-update', payload);
+      io.emit('location_update', payload);
+
+      // Persist to MongoDB VehicleLocation collection
+      try {
+        const VehicleLocation = require('../models/VehicleLocation');
+        await VehicleLocation.create({
+          vehicleId,
+          latitude: lat,
+          longitude: lng,
+          speed: payload.speed,
+          heading: payload.heading,
+          timestamp: new Date(payload.timestamp),
+        });
+
+        // Update Vehicle doc if found
+        const Vehicle = require('../models/Vehicle');
+        const vDoc = await Vehicle.findOne({
+          $or: [{ vehicleNumber: vehicleId }, { vehicle: vehicleId }],
+        });
+        if (vDoc) {
+          vDoc.latitude = lat;
+          vDoc.lat = lat;
+          vDoc.longitude = lng;
+          vDoc.lng = lng;
+          vDoc.speed = payload.speed;
+          vDoc.location = { type: 'Point', coordinates: [lng, lat] };
+          if (!vDoc.locationHistory) vDoc.locationHistory = [];
+          vDoc.locationHistory.push({
+            latitude: lat,
+            longitude: lng,
+            speed: payload.speed,
+            timestamp: new Date(payload.timestamp),
+          });
+          if (vDoc.locationHistory.length > 1000) {
+            vDoc.locationHistory = vDoc.locationHistory.slice(-1000);
+          }
+          await vDoc.save();
+        }
+      } catch (err) {
+        console.warn('[Socket.IO vehicle-location-update] MongoDB save error:', err.message);
       }
     });
 

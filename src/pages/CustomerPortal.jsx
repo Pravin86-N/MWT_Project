@@ -1,7 +1,26 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Polyline, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { getSocket } from "../services/socket";
+
+// Smooth camera recenter for customer live tracking map
+function CustomerMapRecenter({ center }) {
+  const map = useMap();
+  useEffect(() => {
+    if (
+      center &&
+      Array.isArray(center) &&
+      Number.isFinite(Number(center[0])) &&
+      Number.isFinite(Number(center[1]))
+    ) {
+      try {
+        map.panTo(center, { animate: true, duration: 1.2 });
+      } catch (e) {}
+    }
+  }, [center, map]);
+  return null;
+}
 import {
   Building2,
   CreditCard,
@@ -90,6 +109,12 @@ export default function CustomerPortal() {
   const user = state.user;
 
   const [modalOpen, setModalOpen] = useState(false);
+
+  // Debug log customer portal loaded
+  useEffect(() => {
+    console.log("[Dashboard] Dashboard loaded (Customer Portal) - User:", user?.email, "Role:", user?.role);
+  }, [user]);
+
   const [invoiceOrder, setInvoiceOrder] = useState(null);
   const [trackingOrder, setTrackingOrder] = useState(null);
   const [supportModalOpen, setSupportModalOpen] = useState(false);
@@ -198,8 +223,47 @@ export default function CustomerPortal() {
   const availableCredit = Math.max(0, creditLimit - creditUsed);
   const creditPercent = Math.round((creditUsed / creditLimit) * 100);
 
-  // Animate live tanker position on live map
+  const [tankerSpeed, setTankerSpeed] = useState(58);
+  const [liveTrackingActive, setLiveTrackingActive] = useState(false);
+
+  // Real-time Socket.IO vehicle tracking for customer (Requirement 7)
   useEffect(() => {
+    const socket = getSocket();
+    const handleLocationUpdate = (data) => {
+      if (!data) return;
+      const { vehicleId, driverId, latitude, longitude, speed: s, driverName } = data;
+      const assignedVeh = latestActiveOrder?.vehicle;
+      const assignedDriver = latestActiveOrder?.driver;
+
+      const isAssignedVehicle =
+        assignedVeh &&
+        assignedVeh !== "—" &&
+        assignedVeh !== "Unassigned" &&
+        (assignedVeh === vehicleId || vehicleId?.includes(assignedVeh));
+
+      const isAssignedDriver =
+        assignedDriver &&
+        assignedDriver !== "—" &&
+        assignedDriver !== "Unassigned" &&
+        (driverName?.toLowerCase().includes(assignedDriver.toLowerCase()) ||
+          assignedDriver.toLowerCase().includes(driverName?.toLowerCase()));
+
+      if (isAssignedVehicle || isAssignedDriver) {
+        setTankerPos([Number(latitude), Number(longitude)]);
+        if (s != null && !isNaN(Number(s))) setTankerSpeed(Number(s));
+        setLiveTrackingActive(true);
+      }
+    };
+
+    socket.on("location_update", handleLocationUpdate);
+    return () => {
+      socket.off("location_update", handleLocationUpdate);
+    };
+  }, [latestActiveOrder]);
+
+  // Fallback simulated tanker animation only if no real live GPS pings are active
+  useEffect(() => {
+    if (liveTrackingActive) return;
     const timer = setInterval(() => {
       setTankerPos((prev) => {
         const nextLat = prev[0] - 0.001;
@@ -207,9 +271,9 @@ export default function CustomerPortal() {
         if (nextLat <= 13.0610) return [13.0827, 80.2707];
         return [Number(nextLat.toFixed(4)), Number(nextLng.toFixed(4))];
       });
-    }, 2500);
+    }, 3000);
     return () => clearInterval(timer);
-  }, []);
+  }, [liveTrackingActive]);
 
   const handleCreateOrder = (newOrderData) => {
     addOrder({
@@ -466,14 +530,15 @@ export default function CustomerPortal() {
             </div>
           </div>
 
-          {/* REAL OPENSTREETMAP LIVE TRACKING CANVAS */}
+          {/* REAL OPENSTREETMAP LIVE TRACKING CANVAS (Requirement 7) */}
           <div className="cust-map-container-box">
             <MapContainer
-              center={[13.0720, 80.2600]}
+              center={tankerPos}
               zoom={13}
               zoomControl={false}
               style={{ width: "100%", height: "320px", borderRadius: "16px" }}
             >
+              <CustomerMapRecenter center={tankerPos} />
               <TileLayer
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -489,12 +554,13 @@ export default function CustomerPortal() {
                 <Popup>🏥 {latestActiveOrder.site}</Popup>
               </Marker>
 
-              {/* Moving Tanker Marker */}
+              {/* Moving Tanker Marker (Requirement 7: Show live marker on map) */}
               <Marker position={tankerPos} icon={createTruckMarkerIcon()}>
                 <Popup>
                   🚛 <strong>{latestActiveOrder.vehicle || "TN-01-AB-1234"}</strong><br />
                   Driver: {latestActiveOrder.driver || "R. Rangarajan"}<br />
-                  Speed: 64 km/h (En-route)
+                  Speed: {tankerSpeed} km/h ({liveTrackingActive ? "Live GPS Connected" : "En-route"})<br />
+                  GPS: {tankerPos[0]?.toFixed(4)}, {tankerPos[1]?.toFixed(4)}
                 </Popup>
               </Marker>
 

@@ -36,9 +36,14 @@ import NotFound from "./pages/NotFound";
 
 function RootRedirect() {
   const { state } = useAuth();
-  if (state.status !== "authenticated") return <Navigate to="/login" replace />;
-  if (state.user?.role === "Customer") return <Navigate to="/customer-portal" replace />;
-  if (state.user?.role === "Driver") return <Navigate to="/driver-portal" replace />;
+  const token = localStorage.getItem("fdms-token") || localStorage.getItem("token");
+  const userStr = localStorage.getItem("fdms-user") || localStorage.getItem("user");
+  const currentUser = state.user || (userStr ? JSON.parse(userStr) : null);
+
+  if (state.status !== "authenticated" && !token) return <Navigate to="/login" replace />;
+  const role = (currentUser?.role || "").toLowerCase();
+  if (role === "customer") return <Navigate to="/customer-portal" replace />;
+  if (role === "driver") return <Navigate to="/driver-portal" replace />;
   return <Navigate to="/dashboard" replace />;
 }
 

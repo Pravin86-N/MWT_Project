@@ -59,6 +59,14 @@ const users = [
     city: 'Chennai',
     phone: '+91 98400 11223',
   },
+  {
+    name: 'K. Elango',
+    email: 'elango@fdms.com',
+    password: 'driver123',
+    role: 'Driver',
+    city: 'Chennai',
+    phone: '+91 98420 33445',
+  },
 ];
 
 const fuelPricing = [
@@ -118,7 +126,7 @@ const tanks = [
 const drivers = [
   { name: 'R. Rangarajan', phone: '+91 98400 11223', vehicle: 'TN-01-AB-1234', onDuty: true, deliveries: 142 },
   { name: 'V. Vasanth', phone: '+91 98410 22334', vehicle: 'TN-07-CD-4321', onDuty: true, deliveries: 98 },
-  { name: 'K. Elango', phone: '+91 98420 33445', vehicle: 'TN-09-EF-5678', onDuty: false, deliveries: 76 },
+  { name: 'K. Elango', phone: '+91 98420 33445', vehicle: 'TN-09-EF-5678', onDuty: false, deliveries: 76, email: 'elango@fdms.com' },
   { name: 'M. Saravanan', phone: '+91 98430 44556', vehicle: 'TN-11-GH-9012', onDuty: true, deliveries: 61 },
 ];
 
