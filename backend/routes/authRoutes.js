@@ -67,7 +67,25 @@ router.get('/customer', protect, authorize('Customer', 'Admin'), (req, res) => {
   });
 });
 
-// Users management (Admin, Depot Manager)
-router.get('/users', protect, authorize('Admin', 'Depot Manager'), getAllUsers);
+// Driver route
+router.get('/driver', protect, authorize('Driver', 'Admin'), (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Access granted: Driver resource',
+    user: req.user,
+  });
+});
+
+// Support Executive / Auditor route
+router.get('/support-executive', protect, authorize('Support Executive', 'Auditor', 'Admin'), (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Access granted: Support Executive resource',
+    user: req.user,
+  });
+});
+
+// Users management (Admin, Depot Manager, Support Executive)
+router.get('/users', protect, authorize('Admin', 'Depot Manager', 'Support Executive', 'Auditor'), getAllUsers);
 
 module.exports = router;

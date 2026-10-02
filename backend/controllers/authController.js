@@ -12,7 +12,7 @@ const googleClient = new OAuth2Client(
 );
 
 // Valid system roles
-const VALID_ROLES = ['Admin', 'Depot Manager', 'Customer', 'Driver'];
+const VALID_ROLES = ['Admin', 'Depot Manager', 'Customer', 'Driver', 'Support Executive', 'Auditor'];
 
 // @desc    Register new user
 // @route   POST /api/auth/register
@@ -132,7 +132,7 @@ const login = async (req, res, next) => {
       ) {
         return res.status(403).json({
           success: false,
-          message: 'Your registration is pending approval.',
+          message: 'Your account is awaiting approval.',
         });
       }
       if (
@@ -148,7 +148,7 @@ const login = async (req, res, next) => {
       if (registration.status === 'Pending' || registration.status === 'Pending Review') {
         return res.status(403).json({
           success: false,
-          message: 'Your registration is pending approval.',
+          message: 'Your account is awaiting approval.',
         });
       }
       if (registration.status === 'Rejected') {
@@ -423,7 +423,23 @@ const googleAuth = async (req, res, next) => {
 
     let user = await User.findOne({ email: normalizedEmail });
 
-    // Customer created automatically after Google registration
+    // Check if there is an existing pending or rejected registration for this email
+    if (registration) {
+      if (registration.status === 'Pending' || registration.status === 'Pending Review') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your account is awaiting approval.',
+        });
+      }
+      if (registration.status === 'Rejected') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your registration request was rejected.',
+        });
+      }
+    }
+
+    // Customer created automatically after verified Google registration
     if (!user) {
       const randomPassword = 'Gg_' + Math.random().toString(36).slice(-8) + '1!';
       user = await User.create({
@@ -431,7 +447,7 @@ const googleAuth = async (req, res, next) => {
         email: normalizedEmail,
         password: randomPassword,
         role: 'Customer',
-        status: 'Pending',
+        status: 'Active',
         googleId: googleId || null,
         profileImage: profileImage || '',
         loginProvider: 'google',
@@ -439,37 +455,14 @@ const googleAuth = async (req, res, next) => {
         city: 'Chennai',
       });
 
-      // Create pending registration record for Admin / Depot Manager Applications Dossier
-      if (!registration) {
-        registration = await Registration.create({
-          companyName: name || normalizedEmail.split('@')[0],
-          authorizedPerson: name || normalizedEmail.split('@')[0],
-          contactPerson: name || normalizedEmail.split('@')[0],
-          email: normalizedEmail,
-          password: randomPassword,
-          mobile: '+91 98400 00000',
-          gstNumber: 'PENDING',
-          panNumber: 'PENDING',
-          address: 'Corporate Site, Chennai',
-          city: 'Chennai',
-          status: 'Pending',
-          submittedAt: new Date(),
-        });
-      }
-
       logActivity({
-        action: 'Google Registration Submitted',
+        action: 'Google Registration Completed',
         userId: user._id,
         userName: user.name,
         userRole: 'Customer',
         entityId: user.email,
-        details: `Customer ${user.name} registered via Google OAuth (Pending Approval)`,
+        details: `Customer ${user.name} registered via Google OAuth (Verified & Active)`,
         ipAddress: req.ip || req.connection?.remoteAddress || '',
-      });
-
-      return res.status(403).json({
-        success: false,
-        message: 'Your registration is pending approval.',
       });
     }
 
@@ -481,7 +474,7 @@ const googleAuth = async (req, res, next) => {
       ) {
         return res.status(403).json({
           success: false,
-          message: 'Your registration is pending approval.',
+          message: 'Your account is awaiting approval.',
         });
       }
       if (

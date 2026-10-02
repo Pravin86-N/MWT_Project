@@ -3,6 +3,7 @@ import { Truck, Plus, ShieldCheck, Wrench, Navigation, CheckCircle2, User, Fuel,
 import { useOrders } from "../context/OrdersContext";
 import { useLanguage } from "../context/LanguageContext";
 import { vehicleApi, driverApi } from "../services/api";
+import { recordRecentAccess } from "../services/recentAccess";
 
 export default function Vehicles() {
   const { t } = useLanguage();
@@ -206,7 +207,19 @@ export default function Vehicles() {
           };
 
           return (
-            <div key={v.id} className="panel driver-card" style={{ padding: "20px", borderRadius: "16px", border: "1px solid var(--line)", background: "var(--panel)" }}>
+            <div
+              key={v.id}
+              className="panel driver-card"
+              onClick={() => {
+                recordRecentAccess("vehicles", {
+                  id: String(v.reg || v.id),
+                  title: `Tanker ${v.reg}`,
+                  subtitle: `${v.type} • ${v.capacity?.toLocaleString() || 12000}L (${v.status})`,
+                  link: "/vehicles",
+                });
+              }}
+              style={{ padding: "20px", borderRadius: "16px", border: "1px solid var(--line)", background: "var(--panel)", cursor: "pointer" }}
+            >
               {/* Header */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
                 <div>

@@ -1111,7 +1111,13 @@ export default function CustomerPortal() {
                     <div style={{ fontSize: "12px", color: "var(--green-neon)" }}>🟢 4 Dispatch Officers Online Now</div>
                   </div>
                 </div>
-                <button className="btn-primary btn-sm" onClick={() => alert("Connecting to Live Dispatch Chat Agent...")}>
+                <button
+                  className="btn-primary btn-sm"
+                  onClick={() => {
+                    setSupportModalOpen(false);
+                    window.dispatchEvent(new CustomEvent("open-fuel-assistant", { detail: { initialPrompt: "delivery_status" } }));
+                  }}
+                >
                   Start Chat
                 </button>
               </div>

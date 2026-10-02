@@ -700,11 +700,38 @@ export default function Dashboard() {
         <>
           <div className="dashboard-header-saas">
             <div className="dash-title-group">
-              <h1>Depot Operations Control Center</h1>
-              <p>Today is {todayDateStr} • Operational Fleet & Tank Telemetry</p>
+              <h1>
+                {user?.role === "Support Executive"
+                  ? "Customer Support & Dispatch Center"
+                  : user?.role === "Auditor"
+                  ? "Compliance & System Audit Center"
+                  : "Depot Operations Control Center"}
+              </h1>
+              <p>
+                Today is {todayDateStr} •{" "}
+                {user?.role === "Support Executive"
+                  ? "Customer Ticket Resolution & Dispatch Verification"
+                  : user?.role === "Auditor"
+                  ? "Regulatory Compliance, Security Logs & Ledger Verification"
+                  : "Operational Fleet & Tank Telemetry"}
+              </p>
             </div>
-            <span className="pill" style={{ "--pill-color": "var(--green-neon)" }}>
-              DEPOT ONLINE
+            <span
+              className="pill"
+              style={{
+                "--pill-color":
+                  user?.role === "Support Executive"
+                    ? "var(--blue)"
+                    : user?.role === "Auditor"
+                    ? "var(--purple)"
+                    : "var(--green-neon)",
+              }}
+            >
+              {user?.role === "Support Executive"
+                ? "SUPPORT ONLINE"
+                : user?.role === "Auditor"
+                ? "AUDIT READY"
+                : "DEPOT ONLINE"}
             </span>
           </div>
 

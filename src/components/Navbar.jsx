@@ -15,21 +15,26 @@ import {
   Truck,
   ShieldAlert,
   Fuel,
+  History,
+  Globe,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { useLanguage } from "../context/LanguageContext";
 import { useSimulation } from "../context/SimulationContext";
 import { useNotifications } from "../context/NotificationContext";
+import RecentlyAccessedModal from "./RecentlyAccessedModal";
 
 export default function Navbar({ now }) {
   const { state, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { t } = useLanguage();
+  const { language, setLanguage, t } = useLanguage();
   const { isSimulating, toggleSimulation } = useSimulation();
   const { markAsRead, markAllAsRead, getUnreadCount, getNotificationsForRole } = useNotifications();
 
   const [showNotifMenu, setShowNotifMenu] = useState(false);
+  const [showRecentModal, setShowRecentModal] = useState(false);
+  const [showLangMenu, setShowLangMenu] = useState(false);
   const [activeCategory, setActiveCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -190,6 +195,77 @@ export default function Navbar({ now }) {
           )}
         </div>
 
+        {/* Recently Accessed Tracker Button & Modal (Requirement 4) */}
+        <button
+          className="icon-btn"
+          onClick={() => setShowRecentModal(true)}
+          title="Recently Accessed (Orders, Customers, Vehicles, Reports)"
+        >
+          <History size={19} />
+        </button>
+
+        {/* Multi-Language Selector Dropdown (English, Tamil, Hindi - Requirement 5) */}
+        <div style={{ position: "relative" }}>
+          <button
+            className="icon-btn"
+            onClick={() => setShowLangMenu((prev) => !prev)}
+            title="Switch Language (English / தமிழ் / हिन्दी)"
+          >
+            <Globe size={19} />
+          </button>
+          {showLangMenu && (
+            <div
+              style={{
+                position: "absolute",
+                top: "100%",
+                right: 0,
+                marginTop: "8px",
+                background: "var(--panel)",
+                border: "1px solid var(--line)",
+                borderRadius: "10px",
+                boxShadow: "var(--shadow-md)",
+                padding: "6px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+                minWidth: "120px",
+                zIndex: 1050,
+              }}
+            >
+              {[
+                { code: "en", label: "English" },
+                { code: "ta", label: "தமிழ்" },
+                { code: "hi", label: "हिन्दी" },
+              ].map((l) => (
+                <button
+                  key={l.code}
+                  type="button"
+                  onClick={() => {
+                    setLanguage(l.code);
+                    setShowLangMenu(false);
+                  }}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "6px 10px",
+                    borderRadius: "6px",
+                    fontSize: "12px",
+                    fontWeight: language === l.code ? "700" : "500",
+                    background: language === l.code ? "rgba(255, 94, 0, 0.15)" : "transparent",
+                    color: language === l.code ? "var(--orange)" : "var(--text)",
+                    border: "none",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <span>{l.label}</span>
+                  {language === l.code && <span style={{ color: "var(--orange)" }}>✓</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Theme Switcher Toggle */}
         <button
           className="icon-btn"
@@ -222,6 +298,9 @@ export default function Navbar({ now }) {
           <span>{t("logout")}</span>
         </button>
       </div>
+
+      {/* Recently Accessed Modal */}
+      <RecentlyAccessedModal isOpen={showRecentModal} onClose={() => setShowRecentModal(false)} />
     </header>
   );
 }

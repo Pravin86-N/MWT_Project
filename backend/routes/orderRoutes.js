@@ -13,6 +13,7 @@ const {
   updateOrderStatus,
   updateOrder,
   deleteOrder,
+  getSmartDispatchSuggestion,
 } = require('../controllers/orderController');
 
 // Main orders collection: List orders or Customer creates order
@@ -20,6 +21,10 @@ router
   .route('/')
   .get(getOrders)
   .post(createOrder);
+
+// Smart Fuel Dispatch suggestion route
+router.get('/:id/smart-dispatch', getSmartDispatchSuggestion);
+router.get('/smart-dispatch/suggest', getSmartDispatchSuggestion);
 
 // Depot Manager dashboard: Pending orders awaiting approval
 router.get('/pending', getPendingOrders);

@@ -35,6 +35,7 @@ import { useOrders } from "../context/OrdersContext";
 import { useLanguage } from "../context/LanguageContext";
 import { customerApi } from "../services/api";
 import NewOrderModal from "../components/NewOrderModal";
+import { recordRecentAccess } from "../services/recentAccess";
 
 export default function Customers() {
   const { t } = useLanguage();
@@ -446,7 +447,19 @@ export default function Customers() {
             const isHighCredit = creditPercent >= 80;
 
             return (
-              <div key={c.id || c.name} className="crm-card" onClick={() => setActiveCustomerDrawer(c)}>
+              <div
+                key={c.id || c.name}
+                className="crm-card"
+                onClick={() => {
+                  setActiveCustomerDrawer(c);
+                  recordRecentAccess("customers", {
+                    id: String(c.id || c._id || c.name),
+                    title: c.name || c.companyName,
+                    subtitle: `${c.city || "Chennai"} • ${c.industry || "Commercial Enterprise"}`,
+                    link: "/customers",
+                  });
+                }}
+              >
                 {/* Card Top: Avatar, Name, Priority Badge */}
                 <div className="crm-card-top">
                   <div className="crm-company-info">

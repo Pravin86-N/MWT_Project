@@ -6,6 +6,7 @@ import { useOrders } from "../context/OrdersContext";
 import { useLanguage } from "../context/LanguageContext";
 import StatusPill from "../components/StatusPill";
 import InvoiceModal from "../components/InvoiceModal";
+import { recordRecentAccess } from "../services/recentAccess";
 
 export default function OrderDetail() {
   const { id } = useParams();
@@ -22,7 +23,15 @@ export default function OrderDetail() {
   useEffect(() => {
     setDriver(order?.driver || "");
     setVehicle(order?.vehicle || "");
-  }, [order?.id]);
+    if (order) {
+      recordRecentAccess("orders", {
+        id: String(order.id),
+        title: `Order #${order.orderNumber || order.id}`,
+        subtitle: `${order.customer} • ${(order.qty || order.quantity || 0).toLocaleString()}L ${order.fuelCode}`,
+        link: `/orders/${order.id}`,
+      });
+    }
+  }, [order?.id, order]);
 
   if (!order) {
     return (

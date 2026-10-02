@@ -26,6 +26,7 @@ import { FUEL_TYPES, computeTotal } from "../data/seed";
 import { useOrders } from "../context/OrdersContext";
 import { useLanguage } from "../context/LanguageContext";
 import { reportApi } from "../services/api";
+import { recordRecentAccess } from "../services/recentAccess";
 
 export default function Reports() {
   const { t } = useLanguage();
@@ -35,6 +36,24 @@ export default function Reports() {
   const [serverReports, setServerReports] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Track recently accessed reports
+  useEffect(() => {
+    const tabTitles = {
+      analytics: "Executive Analytics Report",
+      customers: "Client Ledger & Billing Report",
+      orders: "Consolidated Fuel Orders Report",
+      deliveries: "Fleet Delivery & Fulfillment Report",
+      inventory: "Depot Vault Telemetry & Stock Report",
+    };
+    recordRecentAccess("reports", {
+      id: `report-${activeReportTab}`,
+      title: tabTitles[activeReportTab] || "Executive Fuel Report",
+      subtitle: `${timeRange === "30d" ? "Last 30 Days" : "All Time"} · MongoDB Aggregates`,
+      badge: activeReportTab.toUpperCase(),
+      url: "/reports",
+    });
+  }, [activeReportTab, timeRange]);
 
   // Fetch comprehensive reports from MongoDB backend
   const fetchReportData = () => {
@@ -431,6 +450,14 @@ export default function Reports() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+
+    recordRecentAccess("reports", {
+      id: `export-${activeReportTab}-${Date.now()}`,
+      title: `Exported ${activeReportTab.toUpperCase()} CSV`,
+      subtitle: `${fileName} · Instant Local Download`,
+      badge: "CSV",
+      url: "/reports",
+    });
   };
 
   return (

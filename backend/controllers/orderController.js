@@ -2,6 +2,8 @@ const Order = require('../models/Order');
 const Tank = require('../models/Tank');
 const FuelPricing = require('../models/FuelPricing');
 const User = require('../models/User');
+const Vehicle = require('../models/Vehicle');
+const Driver = require('../models/Driver');
 const Notification = require('../models/Notification');
 const { logActivity } = require('./activityController');
 const { emitNotification } = require('../config/socket');
@@ -872,6 +874,154 @@ const getOrderInvoice = async (req, res, next) => {
   }
 };
 
+// @desc    Get Smart Fuel Dispatch suggestion (Nearest depot, nearest vehicle, estimated delivery time)
+// @route   GET /api/orders/:id/smart-dispatch
+// @access  Protected (Depot Manager, Admin)
+const getSmartDispatchSuggestion = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    let order = null;
+    if (id && id !== 'suggest') {
+      if (id.match(/^[0-9a-fA-F]{24}$/)) {
+        order = await Order.findById(id);
+      } else {
+        order = await Order.findOne({ orderNumber: id });
+      }
+    }
+
+    // Known Depot Terminals with precise GPS coordinates
+    const DEPOTS = [
+      { name: 'Chennai Central Fuel Terminal', code: 'DEP-CHN-01', lat: 13.0827, lng: 80.2707, city: 'Chennai' },
+      { name: 'Salem Fleet Regional Hub', code: 'DEP-SLM-02', lat: 11.6643, lng: 78.1460, city: 'Salem' },
+      { name: 'Madurai Southern Logistics Depot', code: 'DEP-MDU-03', lat: 9.9252, lng: 78.1198, city: 'Madurai' },
+      { name: 'Trichy Fleet Central Terminal', code: 'DEP-TRY-04', lat: 10.7905, lng: 78.7047, city: 'Trichy' },
+      { name: 'Coimbatore Western Industrial Hub', code: 'DEP-CBE-05', lat: 11.0168, lng: 76.9558, city: 'Coimbatore' },
+    ];
+
+    // City coordinates dictionary
+    const CITY_COORDS = {
+      chennai: { lat: 13.0827, lng: 80.2707 },
+      madurai: { lat: 9.9252, lng: 78.1198 },
+      coimbatore: { lat: 11.0168, lng: 76.9558 },
+      salem: { lat: 11.6643, lng: 78.1460 },
+      trichy: { lat: 10.7905, lng: 78.7047 },
+      kanchipuram: { lat: 12.8342, lng: 79.7036 },
+      hosur: { lat: 12.7409, lng: 77.8253 },
+      tirunelveli: { lat: 8.7139, lng: 77.7567 },
+      vellore: { lat: 12.9165, lng: 79.1325 },
+    };
+
+    const destCity = (order?.city || req.query.city || 'Chennai').toLowerCase();
+    const destCoords = CITY_COORDS[destCity] || { lat: 13.0827, lng: 80.2707 };
+
+    // Haversine distance formula
+    const calcDistance = (lat1, lon1, lat2, lon2) => {
+      const R = 6371;
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLon = ((lon2 - lon1) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return Math.round(R * c * 10) / 10;
+    };
+
+    // 1. Calculate Nearest Depot
+    let nearestDepot = DEPOTS[0];
+    let minDepotDist = Infinity;
+    for (const d of DEPOTS) {
+      const dist = calcDistance(d.lat, d.lng, destCoords.lat, destCoords.lng);
+      if (dist < minDepotDist) {
+        minDepotDist = dist;
+        nearestDepot = { ...d, distanceKm: dist };
+      }
+    }
+
+    // 2. Fetch fleet vehicles and drivers from MongoDB
+    const vehicles = await Vehicle.find({});
+    const drivers = await Driver.find({ onDuty: true });
+
+    // Filter available vehicles
+    const availableVehicles = vehicles.filter(
+      (v) => v.status === 'Available' || v.status === 'Idle'
+    );
+    const candidateVehicles = availableVehicles.length > 0 ? availableVehicles : vehicles;
+
+    let nearestVehicle = null;
+    let minVehDist = Infinity;
+
+    for (const v of candidateVehicles) {
+      const vLat = v.latitude || nearestDepot.lat;
+      const vLng = v.longitude || nearestDepot.lng;
+      const distToDepot = calcDistance(vLat, vLng, nearestDepot.lat, nearestDepot.lng);
+      if (distToDepot < minVehDist) {
+        minVehDist = distToDepot;
+        nearestVehicle = {
+          vehicleNumber: v.vehicleNumber || v.reg,
+          model: v.type || 'Fuel Tanker 12,000L',
+          capacity: v.capacity || 12000,
+          status: v.status || 'Available',
+          distanceKm: distToDepot,
+          suggestedDriver: v.driverName || (drivers[0]?.name || 'R. Rangarajan'),
+        };
+      }
+    }
+
+    if (!nearestVehicle && vehicles.length > 0) {
+      const fallbackV = vehicles[0];
+      nearestVehicle = {
+        vehicleNumber: fallbackV.vehicleNumber || fallbackV.reg || 'TN-01-FD-1011',
+        model: fallbackV.type || 'Fuel Tanker 12,000L',
+        capacity: fallbackV.capacity || 12000,
+        status: fallbackV.status || 'Available',
+        distanceKm: 3.2,
+        suggestedDriver: fallbackV.driverName || 'R. Rangarajan',
+      };
+    }
+
+    // 3. Compute Estimated Delivery Time (ETA)
+    const totalDistanceKm = Math.round((minDepotDist + (nearestVehicle?.distanceKm || 3.0)) * 10) / 10;
+    // Avg transit speed = 35 km/h + 15 mins loading/terminal prep
+    const transitMinutes = Math.max(25, Math.round((totalDistanceKm / 35) * 60) + 15);
+    const now = new Date();
+    const etaDate = new Date(now.getTime() + transitMinutes * 60000);
+    const etaFormatted = etaDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+    res.status(200).json({
+      success: true,
+      message: 'Smart fuel dispatch recommendation generated successfully',
+      data: {
+        orderId: order?.orderNumber || id,
+        destination: {
+          customer: order?.customer || 'Customer Site',
+          site: order?.deliveryAddress || order?.site || 'Delivery Site',
+          city: order?.city || destCity,
+          quantity: order?.quantity || order?.qty || 5000,
+          fuelCode: order?.fuelType || order?.fuelCode || 'DSL',
+        },
+        nearestDepot: {
+          name: nearestDepot.name,
+          code: nearestDepot.code,
+          city: nearestDepot.city,
+          distanceKm: nearestDepot.distanceKm,
+          coordinates: [nearestDepot.lat, nearestDepot.lng],
+        },
+        nearestVehicle: nearestVehicle,
+        estimatedDelivery: {
+          durationMinutes: transitMinutes,
+          formattedDuration: `${transitMinutes} mins`,
+          etaTime: etaFormatted,
+          totalDistanceKm: totalDistanceKm,
+          averageSpeedKmH: 35,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createOrder,
   getOrders,
@@ -885,4 +1035,5 @@ module.exports = {
   updateOrderStatus,
   updateOrder,
   deleteOrder,
+  getSmartDispatchSuggestion,
 };

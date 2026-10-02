@@ -33,7 +33,7 @@ const runTestSuite = async () => {
 
     // Setup pending and rejected registrations for testing approval rules
     await Registration.deleteMany({
-      email: { $in: ['google_pending@test.com', 'google_rejected@test.com'] },
+      email: { $in: ['google_pending@test.com', 'google_rejected@test.com', 'google_new_account@test.com'] },
     });
     await User.deleteMany({
       email: { $in: ['google_pending@test.com', 'google_rejected@test.com', 'google_new_account@test.com'] },

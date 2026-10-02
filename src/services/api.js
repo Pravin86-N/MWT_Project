@@ -405,6 +405,12 @@ export const orderApi = {
     const response = await api.delete(`/orders/${id}`);
     return response.data;
   },
+
+  // Smart Fuel Dispatch Suggestion (Nearest depot, nearest vehicle, ETA)
+  getSmartDispatchSuggestion: async (id, city = "") => {
+    const response = await api.get(`/orders/${id}/smart-dispatch`, { params: { city } });
+    return response.data;
+  },
 };
 
 /* ==========================================================================

@@ -67,6 +67,22 @@ const users = [
     city: 'Chennai',
     phone: '+91 98420 33445',
   },
+  {
+    name: 'Kavitha Sundaram',
+    email: 'support@fdms.com',
+    password: 'support123',
+    role: 'Support Executive',
+    city: 'Chennai',
+    phone: '+91 98402 55667',
+  },
+  {
+    name: 'Audit Officer Suresh',
+    email: 'auditor@fdms.com',
+    password: 'auditor123',
+    role: 'Auditor',
+    city: 'Chennai',
+    phone: '+91 98403 99887',
+  },
 ];
 
 const fuelPricing = [

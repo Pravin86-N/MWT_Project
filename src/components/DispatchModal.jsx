@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { X, Truck, UserCheck, AlertTriangle, CheckCircle2, ShieldCheck } from "lucide-react";
+import { X, Truck, UserCheck, AlertTriangle, CheckCircle2, ShieldCheck, Sparkles, Navigation, Clock, Building2, Zap } from "lucide-react";
 import { useNotifications } from "../context/NotificationContext";
-import { driverApi, vehicleApi } from "../services/api";
+import { driverApi, vehicleApi, orderApi } from "../services/api";
 
 export default function DispatchModal({ order, onClose, onConfirm }) {
   const { addNotification } = useNotifications();
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [smartDispatch, setSmartDispatch] = useState(null);
+  const [smartLoading, setSmartLoading] = useState(false);
 
   const [selectedDriver, setSelectedDriver] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState("");
@@ -34,10 +36,29 @@ export default function DispatchModal({ order, onClose, onConfirm }) {
         if (mounted) setLoading(false);
       });
 
+    // Fetch Smart Fuel Dispatch Suggestions (Nearest Depot, Nearest Vehicle, ETA)
+    if (order) {
+      setSmartLoading(true);
+      const targetId = order.mongoId || order.id || order.orderNumber;
+      orderApi
+        .getSmartDispatchSuggestion(targetId, order.city || "")
+        .then((res) => {
+          if (mounted && res?.data) {
+            setSmartDispatch(res.data);
+          }
+        })
+        .catch((err) => {
+          console.warn("[DispatchModal] Smart dispatch suggestion error:", err.message);
+        })
+        .finally(() => {
+          if (mounted) setSmartLoading(false);
+        });
+    }
+
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [order]);
 
   // Filter ONLY available / on-duty drivers
   const availableDrivers = useMemo(
@@ -66,6 +87,23 @@ export default function DispatchModal({ order, onClose, onConfirm }) {
       }
     }
   }, [order, availableDrivers, availableVehicles, selectedDriver, selectedVehicle]);
+
+  const handleApplySmartSuggestion = () => {
+    if (!smartDispatch) return;
+    if (smartDispatch.nearestVehicle?.vehicleNumber) {
+      setSelectedVehicle(smartDispatch.nearestVehicle.vehicleNumber);
+    }
+    if (smartDispatch.nearestVehicle?.suggestedDriver) {
+      const matchDriver = availableDrivers.find(
+        (d) => d.name.toLowerCase() === smartDispatch.nearestVehicle.suggestedDriver.toLowerCase()
+      );
+      if (matchDriver) {
+        setSelectedDriver(matchDriver.name);
+      } else if (availableDrivers.length > 0) {
+        setSelectedDriver(availableDrivers[0].name);
+      }
+    }
+  };
 
   const handleDriverChange = (driverName) => {
     setSelectedDriver(driverName);
@@ -153,11 +191,74 @@ export default function DispatchModal({ order, onClose, onConfirm }) {
           </div>
         </div>
 
-        {/* Validation Error Display */}
-        {validationError && (
-          <div className="banner-alert danger-banner" style={{ borderRadius: "12px", marginTop: "12px", padding: "10px 14px" }}>
-            <AlertTriangle size={18} style={{ color: "var(--red)" }} />
-            <span style={{ fontSize: "13px", fontWeight: "700" }}>{validationError}</span>
+        {/* Smart Fuel Dispatch AI Recommendation Card (Requirement 8) */}
+        {smartDispatch && (
+          <div
+            style={{
+              marginTop: "14px",
+              padding: "12px 14px",
+              borderRadius: "12px",
+              background: "linear-gradient(135deg, rgba(255, 94, 0, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%)",
+              border: "1px solid rgba(255, 94, 0, 0.25)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <Sparkles size={16} style={{ color: "var(--orange)" }} />
+                <strong style={{ fontSize: "12px", color: "var(--orange)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Smart Fuel Dispatch Engine
+                </strong>
+              </div>
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={handleApplySmartSuggestion}
+                style={{
+                  fontSize: "11px",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  background: "var(--orange)",
+                  color: "#FFF",
+                  fontWeight: "700",
+                  cursor: "pointer",
+                }}
+              >
+                <Zap size={12} style={{ verticalAlign: "middle", marginRight: "3px" }} />
+                Auto-Select
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", fontSize: "11px" }}>
+              <div style={{ background: "var(--panel)", padding: "8px", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                <span style={{ color: "var(--text-dim)", display: "block" }}>Nearest Depot</span>
+                <strong style={{ color: "var(--text)", display: "block", fontSize: "12px", marginTop: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {smartDispatch.nearestDepot?.name || "Central Depot"}
+                </strong>
+                <small style={{ color: "var(--green-neon)", fontWeight: "700" }}>
+                  {smartDispatch.nearestDepot?.distanceKm ?? 3.5} km away
+                </small>
+              </div>
+
+              <div style={{ background: "var(--panel)", padding: "8px", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                <span style={{ color: "var(--text-dim)", display: "block" }}>Nearest Vehicle</span>
+                <strong style={{ color: "var(--text)", display: "block", fontSize: "12px", marginTop: "2px" }}>
+                  {smartDispatch.nearestVehicle?.vehicleNumber || "TN-01-FD-1011"}
+                </strong>
+                <small style={{ color: "var(--blue)", fontWeight: "700" }}>
+                  {smartDispatch.nearestVehicle?.model || "12,000L Tanker"}
+                </small>
+              </div>
+
+              <div style={{ background: "var(--panel)", padding: "8px", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                <span style={{ color: "var(--text-dim)", display: "block" }}>Est. Delivery Time</span>
+                <strong style={{ color: "var(--text)", display: "block", fontSize: "12px", marginTop: "2px" }}>
+                  {smartDispatch.estimatedDelivery?.formattedDuration || "35 mins"}
+                </strong>
+                <small style={{ color: "var(--amber)", fontWeight: "700" }}>
+                  ETA: {smartDispatch.estimatedDelivery?.etaTime || "In Transit"}
+                </small>
+              </div>
+            </div>
           </div>
         )}
 
