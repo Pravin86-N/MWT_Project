@@ -19,7 +19,7 @@ import {
   UserCheck,
   RefreshCw,
 } from "lucide-react";
-import { registrationApi } from "../services/api";
+import { registrationApi, getBackendBaseUrl } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
 export default function Applications() {
@@ -108,17 +108,12 @@ export default function Applications() {
   // Normalize document URLs for preview, open, and download
   const getDocumentUrl = (doc) => {
     if (!doc) return "";
+    const apiHost = getBackendBaseUrl();
     if (doc.filePath) {
       if (doc.filePath.startsWith("http")) return doc.filePath;
-      const apiHost = import.meta.env.VITE_API_URL
-        ? import.meta.env.VITE_API_URL.replace("/api", "")
-        : "http://localhost:5000";
       return `${apiHost}${doc.filePath.startsWith("/") ? "" : "/"}${doc.filePath}`;
     }
     if (doc.fileName) {
-      const apiHost = import.meta.env.VITE_API_URL
-        ? import.meta.env.VITE_API_URL.replace("/api", "")
-        : "http://localhost:5000";
       return `${apiHost}/uploads/${doc.fileName}`;
     }
     return "";

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://vercel.sh",
+  "services": {
+    "app": {
+      "root": ".",
+      "framework": "vite",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "backend",
+          "format": "url",
+          "env": "BACKEND_URL"
+        }
+      ]
+    },
+    "backend": {
+      "root": "backend",
+      "framework": "express"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "app"
+      }
+    }
+  ]
+}

@@ -48,18 +48,37 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
+// Master API Router for top-level public path prefix routing (/api)
+const apiRouter = express.Router();
+
+// Auto-reconnect DB middleware for serverless / cold-start resilience
+apiRouter.use(async (req, res, next) => {
+  try {
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState < 1) {
+      await connectDB();
+    }
+  } catch (err) {
+    console.warn('[DB Middleware] Auto-reconnect warning:', err.message);
+  }
+  next();
+});
+
+// Health check endpoint (accessible via /api/health and /health)
+const handleHealthCheck = (req, res) => {
   res.json({
     status: 'OK',
     service: 'Fuel Delivery Management System (FDMS) API',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   });
-});
+};
 
-// Root route
-app.get('/', (req, res) => {
+apiRouter.get('/health', handleHealthCheck);
+app.get('/health', handleHealthCheck);
+
+// API Documentation and status endpoint (accessible via /api and /)
+const handleApiRoot = (req, res) => {
   res.json({
     message: 'Welcome to Fuel Delivery Management System (FDMS) Backend API',
     version: '1.0.0',
@@ -70,27 +89,61 @@ app.get('/', (req, res) => {
       inventory: '/api/inventory',
       drivers: '/api/drivers',
       fleet: '/api/fleet',
+      vehicles: '/api/vehicles',
       registrations: '/api/registrations',
       customers: '/api/customers',
       pricing: '/api/pricing',
+      notifications: '/api/notifications',
+      reports: '/api/reports',
+      activities: '/api/activities',
+      gps: '/api/gps',
     },
   });
+};
+
+apiRouter.get('/', handleApiRoot);
+app.get('/', handleApiRoot);
+
+// Mount all domain routers on apiRouter
+apiRouter.use('/auth', authRoutes);
+apiRouter.use('/orders', orderRoutes);
+apiRouter.use('/inventory', inventoryRoutes);
+apiRouter.use('/drivers', driverRoutes);
+apiRouter.use('/fleet', fleetRoutes);
+apiRouter.use('/vehicles', fleetRoutes);
+apiRouter.use('/registrations', registrationRoutes);
+apiRouter.use('/customers', customerRoutes);
+apiRouter.use('/pricing', pricingRoutes);
+apiRouter.use('/notifications', notificationRoutes);
+apiRouter.use('/reports', reportRoutes);
+apiRouter.use('/activities', activityRoutes);
+apiRouter.use('/gps', gpsRoutes);
+apiRouter.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Test insert route
+apiRouter.get('/test-insert', async (req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const Test = mongoose.models.Test || mongoose.model(
+      'Test',
+      new mongoose.Schema({
+        name: String,
+      })
+    );
+    const data = await Test.create({
+      name: 'Pravin',
+    });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Mount API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/inventory', inventoryRoutes);
-app.use('/api/drivers', driverRoutes);
-app.use('/api/fleet', fleetRoutes);
-app.use('/api/vehicles', fleetRoutes);
-app.use('/api/registrations', registrationRoutes);
-app.use('/api/customers', customerRoutes);
-app.use('/api/pricing', pricingRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/reports', reportRoutes);
-app.use('/api/activities', activityRoutes);
-app.use('/api/gps', gpsRoutes);
+// Mount apiRouter at top-level public path prefix (/api)
+app.use('/api', apiRouter);
+
+// Also mount apiRouter at root (/) for seamless direct service invocation
+app.use('/', apiRouter);
 
 // Error handling middleware
 app.use(notFound);
@@ -123,7 +176,9 @@ const startServer = async () => {
     return server;
   } catch (error) {
     console.error(`[FDMS Backend] Failed to start server: ${error.message}`);
-    process.exit(1);
+    if (process.env.NODE_ENV !== 'production') {
+      process.exit(1);
+    }
   }
 };
 
@@ -132,22 +187,6 @@ startServer();
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
   console.error(`[FDMS Backend] Unhandled Rejection: ${err.message}`);
-});
-app.get("/api/test-insert", async (req, res) => {
-  const mongoose = require("mongoose");
-
-  const Test = mongoose.model(
-    "Test",
-    new mongoose.Schema({
-      name: String,
-    })
-  );
-
-  const data = await Test.create({
-    name: "Pravin",
-  });
-
-  res.json(data);
 });
 
 module.exports = app;

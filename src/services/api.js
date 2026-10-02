@@ -1,20 +1,51 @@
 import axios from "axios";
 
-// Base API URL configuration - dynamically supports local network and mobile devices
-const getApiBaseUrl = () => {
-  const envUrl = import.meta.env.VITE_API_URL;
+// Base Backend and API URL configuration - dynamically supports Vercel Multi-Services (process.env.BACKEND_URL), local network, and production rewrites
+export const getBackendBaseUrl = () => {
+  let backendUrl = "";
+  try {
+    if (typeof process !== "undefined" && process?.env?.BACKEND_URL) {
+      backendUrl = process.env.BACKEND_URL;
+    }
+  } catch (e) {}
+
+  if (!backendUrl && typeof window !== "undefined" && window?.process?.env?.BACKEND_URL) {
+    backendUrl = window.process.env.BACKEND_URL;
+  }
+
+  if (!backendUrl) {
+    backendUrl =
+      (typeof import.meta !== "undefined" && import.meta.env?.VITE_BACKEND_URL) ||
+      (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
+      "";
+  }
+
+  if (backendUrl) {
+    return backendUrl.replace(/\/+$/, "");
+  }
+
   if (typeof window !== "undefined" && window.location) {
     const isLocalhostClient =
       window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-    if (!isLocalhostClient && envUrl && envUrl.includes("localhost")) {
-      return envUrl.replace("localhost", window.location.hostname);
+    if (isLocalhostClient) {
+      return `${window.location.protocol}//${window.location.hostname}:5000`;
     }
-    if (!envUrl) {
-      return `${window.location.protocol}//${window.location.hostname}:5000/api`;
-    }
+    // In production Vercel deployment, return origin or empty string for relative /api rewrites
+    return window.location.origin;
   }
-  return envUrl || "http://localhost:5000/api";
+
+  return "http://localhost:5000";
 };
+
+export const getApiBaseUrl = () => {
+  const backendBase = getBackendBaseUrl();
+  if (!backendBase) {
+    return "/api";
+  }
+  const cleaned = backendBase.replace(/\/+$/, "");
+  return cleaned.endsWith("/api") ? cleaned : `${cleaned}/api`;
+};
+
 const BASE_URL = getApiBaseUrl();
 
 // Create configured Axios instance

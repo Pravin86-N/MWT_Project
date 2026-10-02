@@ -1,18 +1,19 @@
 import io from "socket.io-client";
+import { getBackendBaseUrl } from "./api";
 
 const getSocketUrl = () => {
-  const envUrl = import.meta.env.VITE_BACKEND_URL;
+  const backendUrl = getBackendBaseUrl();
+  if (backendUrl) return backendUrl;
+
   if (typeof window !== "undefined" && window.location) {
     const isLocalhostClient =
       window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-    if (!isLocalhostClient && envUrl && envUrl.includes("localhost")) {
-      return envUrl.replace("localhost", window.location.hostname);
-    }
-    if (!envUrl) {
+    if (isLocalhostClient) {
       return `${window.location.protocol}//${window.location.hostname}:5000`;
     }
+    return window.location.origin;
   }
-  return envUrl || "http://localhost:5000";
+  return "http://localhost:5000";
 };
 const SOCKET_URL = getSocketUrl();
 
