@@ -182,7 +182,13 @@ const startServer = async () => {
   }
 };
 
-startServer();
+// Check if running in a Serverless environment (e.g. Vercel / AWS Lambda)
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT);
+const isDirectExecution = require.main === module || process.env.STANDALONE === 'true';
+
+if (!isServerless && isDirectExecution) {
+  startServer();
+}
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
@@ -190,3 +196,4 @@ process.on('unhandledRejection', (err) => {
 });
 
 module.exports = app;
+

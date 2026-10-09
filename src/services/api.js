@@ -1,37 +1,55 @@
 import axios from "axios";
 
-// Base Backend and API URL configuration - dynamically supports Vercel Multi-Services (process.env.BACKEND_URL), local network, and production rewrites
+// Base Backend and API URL configuration - dynamically supports Vercel Serverless, local dev, and custom production URLs
 export const getBackendBaseUrl = () => {
-  let backendUrl = "";
+  const isBrowser = typeof window !== "undefined" && Boolean(window.location);
+  const isLocalClient =
+    isBrowser &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      window.location.hostname.endsWith(".local"));
+
+  let envBackendUrl = "";
   try {
     if (typeof process !== "undefined" && process?.env?.BACKEND_URL) {
-      backendUrl = process.env.BACKEND_URL;
+      envBackendUrl = process.env.BACKEND_URL;
     }
   } catch (e) {}
 
-  if (!backendUrl && typeof window !== "undefined" && window?.process?.env?.BACKEND_URL) {
-    backendUrl = window.process.env.BACKEND_URL;
+  if (!envBackendUrl && isBrowser && window?.process?.env?.BACKEND_URL) {
+    envBackendUrl = window.process.env.BACKEND_URL;
   }
 
-  if (!backendUrl) {
-    backendUrl =
+  if (!envBackendUrl) {
+    envBackendUrl =
       (typeof import.meta !== "undefined" && import.meta.env?.VITE_BACKEND_URL) ||
       (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
       "";
   }
 
-  if (backendUrl) {
-    return backendUrl.replace(/\/+$/, "");
+  if (envBackendUrl) {
+    const trimmed = envBackendUrl.trim().replace(/\/+$/, "");
+    const isEnvPointingToLocalhost =
+      trimmed.includes("localhost") || trimmed.includes("127.0.0.1");
+
+    // If deployed in production, never attempt to connect to localhost / 127.0.0.1
+    if (isBrowser && !isLocalClient && isEnvPointingToLocalhost) {
+      console.warn(
+        "[API] Production environment detected; ignoring localhost API URL and routing via same-origin /api"
+      );
+      return "";
+    }
+
+    // Strip trailing /api if present so it returns the root backend base URL
+    return trimmed.replace(/\/api$/, "");
   }
 
-  if (typeof window !== "undefined" && window.location) {
-    const isLocalhostClient =
-      window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-    if (isLocalhostClient) {
+  if (isBrowser) {
+    if (isLocalClient) {
       return `${window.location.protocol}//${window.location.hostname}:5000`;
     }
-    // In production Vercel deployment, return origin or empty string for relative /api rewrites
-    return window.location.origin;
+    // In production Vercel deployment, return empty string for same-origin relative /api rewrites
+    return "";
   }
 
   return "http://localhost:5000";

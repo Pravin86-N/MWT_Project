@@ -28,10 +28,10 @@ export const getSocket = () => {
     socket = io(SOCKET_URL, {
       transports: ["websocket", "polling"],
       reconnection: true,
-      reconnectionAttempts: Infinity,
+      reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      timeout: 20000,
+      timeout: 10000,
     });
 
     socket.on("connect", () => {
