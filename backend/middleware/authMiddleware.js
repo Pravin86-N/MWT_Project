@@ -55,8 +55,9 @@ const protect = async (req, res, next) => {
 };
 
 // Role-based authorization middleware
-// Roles supported: 'Admin', 'Depot Manager', 'Customer'
+// Roles supported: 'Admin', 'Depot Manager', 'Customer', 'Driver', 'Support Executive', 'Auditor'
 const authorize = (...roles) => {
+  const flatRoles = roles.flat();
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
@@ -65,10 +66,10 @@ const authorize = (...roles) => {
       });
     }
 
-    if (!roles.includes(req.user.role)) {
+    if (!flatRoles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
-        message: `Role '${req.user.role}' is not authorized to access this resource`,
+        message: `Access denied: requires role ${flatRoles.join(' or ')}`,
       });
     }
 
@@ -76,10 +77,14 @@ const authorize = (...roles) => {
   };
 };
 
+const permissions = require('./permissions');
+
 module.exports = {
   protect,
   authenticate: protect,
   authorize,
   checkRole: authorize,
   generateToken,
+  ...permissions,
 };
+

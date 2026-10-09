@@ -63,18 +63,49 @@ export default function FuelLogisticsAssistant() {
   // Initialize greeting on first launch or role detection
   useEffect(() => {
     if (messages.length === 0) {
-      if (isManagerOrAdmin) {
+      if (role === "admin") {
         setMessages([
           {
             id: 1,
             sender: "bot",
-            text: `👋 Greetings, **${user?.name || "Depot Manager"}**! I am your **AI Fuel Logistics Assistant**. I monitor real-time depot vault levels, telemetry threshold alerts, and active tanker dispatches across Tamil Nadu.`,
+            text: `👋 Greetings, **${user?.name || "Platform Admin"}**! I am your **Platform Governance Assistant**. I oversee system fuel tariffs, customer KYC verifications, audit logs, and multi-depot operations across Tamil Nadu.`,
             type: "greeting",
             quickOptions: [
-              { label: "⛽ Inventory Status", key: "inventory_status" },
+              { label: "💰 Fuel Tariffs & Pricing", key: "pricing_overview" },
+              { label: "⛽ Multi-Depot Inventory", key: "inventory_status" },
+              { label: "🚛 Regional Dispatches", key: "fleet_status" },
+              { label: "📋 Orders Oversight", key: "pending_orders" },
+            ],
+            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ]);
+      } else if (role === "depot manager") {
+        setMessages([
+          {
+            id: 1,
+            sender: "bot",
+            text: `👋 Greetings, **${user?.name || "Depot Manager"}** (${user?.depot || "DEP-CHN-01"})! I am your **Depot Logistics Assistant**. I monitor your local terminal vault levels, vehicle roster, and pending order dispatches.`,
+            type: "greeting",
+            quickOptions: [
+              { label: "⛽ Depot Stock Levels", key: "inventory_status" },
               { label: "⚠️ Low Stock Alerts", key: "low_stock_alerts" },
-              { label: "🚛 Active Fleet Dispatches", key: "fleet_status" },
-              { label: "📋 Pending Approvals", key: "pending_orders" },
+              { label: "🚛 Active Tanker Dispatches", key: "fleet_status" },
+              { label: "📋 Pending Requests", key: "pending_orders" },
+            ],
+            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ]);
+      } else if (role === "auditor" || role === "support executive") {
+        setMessages([
+          {
+            id: 1,
+            sender: "bot",
+            text: `👋 Greetings, **${user?.name || "Auditor / Support"}**! I am your **Compliance & Reporting Assistant**. I provide read-only views into system order manifests, inventory status, and compliance summaries.`,
+            type: "greeting",
+            quickOptions: [
+              { label: "🛡️ Compliance & Logs", key: "compliance_status" },
+              { label: "⛽ Inventory Telemetry", key: "inventory_status" },
+              { label: "📋 Order Manifests", key: "pending_orders" },
             ],
             time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           },
@@ -97,7 +128,7 @@ export default function FuelLogisticsAssistant() {
         ]);
       }
     }
-  }, [isManagerOrAdmin, user]);
+  }, [isManagerOrAdmin, role, user]);
 
   // Customer: find recent orders for this customer
   const customerOrders = orders.filter((o) => {
@@ -258,6 +289,20 @@ export default function FuelLogisticsAssistant() {
       };
     }
 
+    // 9. ADMIN: PRICING & TARIFFS
+    if (q.includes("pricing") || q.includes("tariff") || queryKey === "pricing_overview") {
+      return {
+        text: `💰 **Enterprise Fuel Tariffs & Pricing Controls**: Base fuel prices across Tamil Nadu are centrally governed by Platform Admin. Current base rates: HSD Diesel (₹89.20/L), MS Petrol (₹101.40/L), Jet A-1 (₹118.50/L), Bio-Diesel B20 (₹84.10/L). You can adjust official base rates and volume tier discounts under the Fuel Pricing & Tariffs portal.`,
+      };
+    }
+
+    // 10. COMPLIANCE & AUDIT LOGS
+    if (q.includes("compliance") || q.includes("audit") || queryKey === "compliance_status") {
+      return {
+        text: `🛡️ **Compliance & Audit Verification**: All operational dispatch activities, tanker assignments, driver telemetry, tank refills, and pricing updates are immutably logged with timestamp and user role. The system strictly complies with Petroleum & Explosives Safety Organisation (PESO) regulations.`,
+      };
+    }
+
     // Default conversational response
     return {
       text: `I've analyzed your query regarding "${customQuery}". As your Fuel Logistics Assistant, I can help you verify live order delivery ETAs, track active tankers, review depot inventory, or monitor fuel safety alerts. Please select a quick action below or ask any logistics question!`,
@@ -301,6 +346,8 @@ export default function FuelLogisticsAssistant() {
       low_stock_alerts: "Check low stock alerts & critical thresholds",
       fleet_status: "Show active fleet dispatch summary",
       pending_orders: "Show pending customer approval orders",
+      pricing_overview: "Review enterprise fuel pricing tariffs",
+      compliance_status: "Verify system compliance & audit records",
       invoice_info: "How do I get my digital tax invoice?",
       fuel_quality: "Tell me about fuel quality & density certification",
     };
@@ -392,10 +439,10 @@ export default function FuelLogisticsAssistant() {
             height: isMinimized ? "52px" : "550px",
             maxHeight: "calc(100vh - 48px)",
             maxWidth: "calc(100vw - 32px)",
-            backgroundColor: "#0F172A",
-            border: "1px solid rgba(255, 94, 0, 0.35)",
+            backgroundColor: "var(--panel)",
+            border: "1px solid var(--line)",
             borderRadius: "18px",
-            boxShadow: "0 16px 40px rgba(0, 0, 0, 0.65), 0 0 20px rgba(255, 94, 0, 0.2)",
+            boxShadow: "var(--shadow-xl)",
             display: "flex",
             flexDirection: "column",
             zIndex: 10000,
@@ -407,8 +454,8 @@ export default function FuelLogisticsAssistant() {
           <div
             style={{
               padding: "12px 16px",
-              background: "linear-gradient(90deg, #1E293B 0%, #0F172A 100%)",
-              borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+              background: "var(--panel-alt)",
+              borderBottom: "1px solid var(--line)",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -432,14 +479,14 @@ export default function FuelLogisticsAssistant() {
                 <Bot size={18} />
               </div>
               <div>
-                <div style={{ fontSize: "14px", fontWeight: "700", color: "#F8FAFC", display: "flex", alignItems: "center", gap: "6px" }}>
+                <div style={{ fontSize: "15px", fontWeight: "700", color: "#F8FAFC", display: "flex", alignItems: "center", gap: "6px" }}>
                   <span>Fuel Logistics AI</span>
                   <span
                     style={{
-                      fontSize: "10px",
+                      fontSize: "12px",
                       background: isManagerOrAdmin ? "rgba(255, 94, 0, 0.2)" : "rgba(16, 185, 129, 0.2)",
                       color: isManagerOrAdmin ? "var(--orange)" : "var(--green-neon)",
-                      padding: "2px 6px",
+                      padding: "2px 8px",
                       borderRadius: "6px",
                       fontWeight: "700",
                     }}
@@ -447,7 +494,7 @@ export default function FuelLogisticsAssistant() {
                     {isManagerOrAdmin ? "Operations Mode" : "Customer Mode"}
                   </span>
                 </div>
-                <div style={{ fontSize: "11px", color: "var(--text-dim)", display: "flex", alignItems: "center", gap: "4px" }}>
+                <div style={{ fontSize: "12px", color: "var(--text-dim)", display: "flex", alignItems: "center", gap: "5px" }}>
                   <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10B981", display: "inline-block" }} />
                   Live Telemetry Connected
                 </div>
@@ -502,11 +549,11 @@ export default function FuelLogisticsAssistant() {
                       style={{
                         padding: "10px 14px",
                         borderRadius: m.sender === "user" ? "14px 14px 2px 14px" : "14px 14px 14px 2px",
-                        background: m.sender === "user" ? "var(--orange)" : "#1E293B",
-                        color: "#F8FAFC",
-                        fontSize: "13px",
+                        background: m.sender === "user" ? "var(--orange)" : "var(--panel-alt)",
+                        color: m.sender === "user" ? "#FFFFFF" : "var(--text)",
+                        fontSize: "14px",
                         lineHeight: "1.45",
-                        border: m.sender === "user" ? "none" : "1px solid rgba(255, 255, 255, 0.08)",
+                        border: m.sender === "user" ? "none" : "1px solid var(--line)",
                         maxWidth: "88%",
                         wordBreak: "break-word",
                       }}
@@ -518,10 +565,10 @@ export default function FuelLogisticsAssistant() {
                         <div
                           style={{
                             marginTop: "10px",
-                            background: "rgba(0, 0, 0, 0.35)",
+                            background: "var(--panel)",
                             borderRadius: "10px",
                             padding: "10px",
-                            border: "1px solid rgba(255, 94, 0, 0.3)",
+                            border: "1px solid var(--line)",
                             fontSize: "12px",
                           }}
                         >
@@ -546,10 +593,10 @@ export default function FuelLogisticsAssistant() {
                         <div
                           style={{
                             marginTop: "10px",
-                            background: "rgba(0, 0, 0, 0.35)",
+                            background: "var(--panel)",
                             borderRadius: "10px",
                             padding: "10px",
-                            border: "1px solid rgba(56, 189, 248, 0.3)",
+                            border: "1px solid var(--line)",
                             fontSize: "12px",
                           }}
                         >
@@ -577,10 +624,10 @@ export default function FuelLogisticsAssistant() {
                         <div
                           style={{
                             marginTop: "10px",
-                            background: "rgba(0, 0, 0, 0.35)",
+                            background: "var(--panel)",
                             borderRadius: "10px",
                             padding: "10px",
-                            border: "1px solid rgba(255, 94, 0, 0.3)",
+                            border: "1px solid var(--line)",
                             fontSize: "12px",
                             display: "flex",
                             flexDirection: "column",
@@ -631,7 +678,7 @@ export default function FuelLogisticsAssistant() {
                               <div>Safety Threshold: {t.threshold?.toLocaleString()} L</div>
                             </div>
                           ))}
-                          <div style={{ marginTop: "6px", fontSize: "11px", color: "#FCD34D" }}>
+                          <div style={{ marginTop: "6px", fontSize: "12.5px", color: "#FCD34D" }}>
                             💡 Recommendation: Trigger depot replenishment or reroute reserve capacity.
                           </div>
                         </div>
@@ -645,18 +692,18 @@ export default function FuelLogisticsAssistant() {
                               key={opt.key}
                               onClick={() => handleQuickPrompt(opt.key)}
                               style={{
-                                background: "rgba(255, 255, 255, 0.08)",
-                                border: "1px solid rgba(255, 255, 255, 0.15)",
-                                color: "#F8FAFC",
+                                background: "var(--panel-alt)",
+                                border: "1px solid var(--line)",
+                                color: "var(--text)",
                                 padding: "4px 10px",
                                 borderRadius: "20px",
-                                fontSize: "11px",
+                                fontSize: "12.5px",
                                 fontWeight: "600",
                                 cursor: "pointer",
                                 transition: "all 0.15s ease",
                               }}
-                              onMouseEnter={(e) => (e.target.style.background = "rgba(255, 94, 0, 0.25)")}
-                              onMouseLeave={(e) => (e.target.style.background = "rgba(255, 255, 255, 0.08)")}
+                              onMouseEnter={(e) => (e.target.style.background = "color-mix(in srgb, var(--orange) 20%, var(--panel-alt))")}
+                              onMouseLeave={(e) => (e.target.style.background = "var(--panel-alt)")}
                             >
                               {opt.label}
                             </button>
@@ -664,7 +711,7 @@ export default function FuelLogisticsAssistant() {
                         </div>
                       )}
                     </div>
-                    <span style={{ fontSize: "10px", color: "var(--text-dim)", marginTop: "3px", padding: "0 4px" }}>
+                    <span style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "3px", padding: "0 4px" }}>
                       {m.time}
                     </span>
                   </div>
@@ -672,8 +719,8 @@ export default function FuelLogisticsAssistant() {
 
                 {/* Typing Indicator */}
                 {isTyping && (
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-dim)", fontSize: "12px", padding: "4px 8px" }}>
-                    <Bot size={14} className="animate-spin" />
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-dim)", fontSize: "13px", padding: "4px 8px" }}>
+                    <Bot size={15} className="animate-spin" />
                     <span>Analyzing logistics data...</span>
                   </div>
                 )}
@@ -688,29 +735,29 @@ export default function FuelLogisticsAssistant() {
                   display: "flex",
                   gap: "6px",
                   overflowX: "auto",
-                  borderTop: "1px solid rgba(255, 255, 255, 0.06)",
-                  background: "#0F172A",
+                  borderTop: "1px solid var(--line)",
+                  background: "var(--panel-alt)",
                 }}
               >
                 {isManagerOrAdmin ? (
                   <>
                     <button
                       className="btn-ghost btn-sm"
-                      style={{ fontSize: "11px", padding: "3px 8px", whiteSpace: "nowrap", border: "1px solid var(--line)", borderRadius: "12px" }}
+                      style={{ fontSize: "12.5px", padding: "4px 10px", whiteSpace: "nowrap", border: "1px solid var(--line)", borderRadius: "12px" }}
                       onClick={() => handleQuickPrompt("inventory_status")}
                     >
                       ⛽ Inventory Status
                     </button>
                     <button
                       className="btn-ghost btn-sm"
-                      style={{ fontSize: "11px", padding: "3px 8px", whiteSpace: "nowrap", border: "1px solid var(--line)", borderRadius: "12px" }}
+                      style={{ fontSize: "12.5px", padding: "4px 10px", whiteSpace: "nowrap", border: "1px solid var(--line)", borderRadius: "12px" }}
                       onClick={() => handleQuickPrompt("low_stock_alerts")}
                     >
                       ⚠️ Low Stock Alerts
                     </button>
                     <button
                       className="btn-ghost btn-sm"
-                      style={{ fontSize: "11px", padding: "3px 8px", whiteSpace: "nowrap", border: "1px solid var(--line)", borderRadius: "12px" }}
+                      style={{ fontSize: "12.5px", padding: "4px 10px", whiteSpace: "nowrap", border: "1px solid var(--line)", borderRadius: "12px" }}
                       onClick={() => handleQuickPrompt("fleet_status")}
                     >
                       🚛 Fleet Overview
@@ -720,21 +767,21 @@ export default function FuelLogisticsAssistant() {
                   <>
                     <button
                       className="btn-ghost btn-sm"
-                      style={{ fontSize: "11px", padding: "3px 8px", whiteSpace: "nowrap", border: "1px solid var(--line)", borderRadius: "12px" }}
+                      style={{ fontSize: "12.5px", padding: "4px 10px", whiteSpace: "nowrap", border: "1px solid var(--line)", borderRadius: "12px" }}
                       onClick={() => handleQuickPrompt("track_order")}
                     >
                       🔍 Track Order
                     </button>
                     <button
                       className="btn-ghost btn-sm"
-                      style={{ fontSize: "11px", padding: "3px 8px", whiteSpace: "nowrap", border: "1px solid var(--line)", borderRadius: "12px" }}
+                      style={{ fontSize: "12.5px", padding: "4px 10px", whiteSpace: "nowrap", border: "1px solid var(--line)", borderRadius: "12px" }}
                       onClick={() => handleQuickPrompt("delivery_status")}
                     >
                       🚚 Delivery Status
                     </button>
                     <button
                       className="btn-ghost btn-sm"
-                      style={{ fontSize: "11px", padding: "3px 8px", whiteSpace: "nowrap", border: "1px solid var(--line)", borderRadius: "12px" }}
+                      style={{ fontSize: "12.5px", padding: "4px 10px", whiteSpace: "nowrap", border: "1px solid var(--line)", borderRadius: "12px" }}
                       onClick={() => handleQuickPrompt("invoice_info")}
                     >
                       📄 Tax Invoice
@@ -765,12 +812,12 @@ export default function FuelLogisticsAssistant() {
                   onChange={(e) => setInputText(e.target.value)}
                   style={{
                     flex: 1,
-                    background: "rgba(15, 23, 42, 0.8)",
-                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    background: "var(--panel-alt)",
+                    border: "1px solid var(--line)",
                     borderRadius: "20px",
                     padding: "8px 14px",
-                    color: "#F8FAFC",
-                    fontSize: "13px",
+                    color: "var(--text)",
+                    fontSize: "14px",
                     outline: "none",
                   }}
                 />

@@ -69,6 +69,7 @@ export default function Navbar({ now }) {
           <input
             type="text"
             placeholder="Search orders, telemetry, drivers, fleet..."
+            aria-label="Search orders, telemetry, drivers, fleet"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -81,6 +82,7 @@ export default function Navbar({ now }) {
         <button
           className={`sim-toggle-btn ${isSimulating ? "sim-active" : ""}`}
           onClick={toggleSimulation}
+          aria-pressed={isSimulating}
           title="Toggle live dispatch simulation engine"
         >
           <Zap size={16} className={isSimulating ? "zap-pulse" : ""} />
@@ -101,6 +103,8 @@ export default function Navbar({ now }) {
             onClick={() => {
               setShowNotifMenu((prev) => !prev);
             }}
+            aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+            aria-expanded={showNotifMenu}
             title="Notification & Activity Feed"
           >
             <Bell size={20} />
@@ -112,7 +116,7 @@ export default function Navbar({ now }) {
               <div className="notif-header">
                 <div>
                   <h4 style={{ fontWeight: "700", margin: 0 }}>Notification Center</h4>
-                  <small style={{ color: "var(--orange)", fontSize: "10px", fontWeight: "700" }}>
+                  <small style={{ color: "var(--orange)", fontSize: "12px", fontWeight: "700" }}>
                     {userRole === "Customer" ? "CUSTOMER REAL-TIME FEED" : "DEPOT OPERATIONS STREAM"}
                   </small>
                 </div>
@@ -131,8 +135,8 @@ export default function Navbar({ now }) {
                     className={`btn-ghost btn-sm ${activeCategory === cat ? "active" : ""}`}
                     onClick={() => setActiveCategory(cat)}
                     style={{
-                      fontSize: "11px",
-                      padding: "4px 8px",
+                      fontSize: "13px",
+                      padding: "5px 10px",
                       borderRadius: "6px",
                       fontWeight: activeCategory === cat ? "700" : "500",
                       background: activeCategory === cat ? "var(--orange)" : "transparent",
@@ -146,7 +150,7 @@ export default function Navbar({ now }) {
 
               <div className="notif-list" style={{ maxHeight: "320px", overflowY: "auto" }}>
                 {filteredNotifications.length === 0 ? (
-                  <div className="notif-empty" style={{ padding: "20px", textAlign: "center", color: "var(--text-dim)", fontSize: "13px" }}>
+                  <div className="notif-empty" style={{ padding: "20px", textAlign: "center", color: "var(--text-dim)", fontSize: "14px" }}>
                     No notifications in this category.
                   </div>
                 ) : (
@@ -179,10 +183,10 @@ export default function Navbar({ now }) {
                         {getIcon()}
                         <div style={{ flex: 1 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <strong style={{ fontSize: "13px", color: "var(--text)" }}>{n.title}</strong>
-                            <small style={{ fontSize: "10px", color: "var(--text-dim)" }}>{timeStr}</small>
+                            <strong style={{ fontSize: "15px", color: "var(--text)" }}>{n.title}</strong>
+                            <small style={{ fontSize: "12px", color: "var(--text-dim)" }}>{timeStr}</small>
                           </div>
-                          <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "var(--text-dim)", lineHeight: "1.3" }}>
+                          <p style={{ margin: "2px 0 0 0", fontSize: "13px", color: "var(--text-dim)", lineHeight: "1.3" }}>
                             {n.message}
                           </p>
                         </div>
@@ -199,6 +203,7 @@ export default function Navbar({ now }) {
         <button
           className="icon-btn"
           onClick={() => setShowRecentModal(true)}
+          aria-label="Recently Accessed orders, customers, vehicles, reports"
           title="Recently Accessed (Orders, Customers, Vehicles, Reports)"
         >
           <History size={19} />
@@ -209,6 +214,8 @@ export default function Navbar({ now }) {
           <button
             className="icon-btn"
             onClick={() => setShowLangMenu((prev) => !prev)}
+            aria-label="Switch Language"
+            aria-expanded={showLangMenu}
             title="Switch Language (English / தமிழ் / हिन्दी)"
           >
             <Globe size={19} />
@@ -249,7 +256,7 @@ export default function Navbar({ now }) {
                     justifyContent: "space-between",
                     padding: "6px 10px",
                     borderRadius: "6px",
-                    fontSize: "12px",
+                    fontSize: "13px",
                     fontWeight: language === l.code ? "700" : "500",
                     background: language === l.code ? "rgba(255, 94, 0, 0.15)" : "transparent",
                     color: language === l.code ? "var(--orange)" : "var(--text)",
@@ -270,13 +277,14 @@ export default function Navbar({ now }) {
         <button
           className="icon-btn"
           onClick={toggleTheme}
+          aria-label={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
           title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
         >
           {theme === "dark" ? <Sun size={20} style={{ color: "var(--amber)" }} /> : <Moon size={20} style={{ color: "var(--blue)" }} />}
         </button>
 
         {/* Quick Settings Link */}
-        <Link className="icon-btn" to="/settings" title={t("nav_settings")}>
+        <Link className="icon-btn" to="/settings" aria-label={t("nav_settings") || "Settings"} title={t("nav_settings")}>
           <SettingsIcon size={20} />
         </Link>
 

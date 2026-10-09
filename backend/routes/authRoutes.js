@@ -15,8 +15,13 @@ const {
   getAllUsers,
   updateProfile,
   changePassword,
+  updateUserRole,
+  updateUserDepot,
+  updateUserStatus,
+  updateUserAdmin,
+  deleteUser,
 } = require('../controllers/authController');
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { protect, authorize, ADMIN_ONLY } = require('../middleware/authMiddleware');
 
 // Public routes
 router.post('/register', register);
@@ -85,7 +90,12 @@ router.get('/support-executive', protect, authorize('Support Executive', 'Audito
   });
 });
 
-// Users management (Admin, Depot Manager, Support Executive)
-router.get('/users', protect, authorize('Admin', 'Depot Manager', 'Support Executive', 'Auditor'), getAllUsers);
+// User Governance & Role Management API (Admin ONLY - Depot Manager gets 403)
+router.get('/users', protect, authorize('Admin'), getAllUsers);
+router.put('/users/:id/role', protect, authorize('Admin'), updateUserRole);
+router.put('/users/:id/depot', protect, authorize('Admin'), updateUserDepot);
+router.patch('/users/:id/status', protect, authorize('Admin'), updateUserStatus);
+router.put('/users/:id', protect, authorize('Admin'), updateUserAdmin);
+router.delete('/users/:id', protect, authorize('Admin'), deleteUser);
 
 module.exports = router;

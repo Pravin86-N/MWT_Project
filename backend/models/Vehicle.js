@@ -135,6 +135,11 @@ const vehicleSchema = new mongoose.Schema(
       default: 'Depot Base',
       trim: true,
     },
+    depot: {
+      type: String,
+      default: 'DEP-CHN-01',
+      trim: true,
+    },
     eta: {
       type: String,
       default: 'Stationary',

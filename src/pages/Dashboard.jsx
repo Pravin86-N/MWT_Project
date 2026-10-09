@@ -33,6 +33,9 @@ import { useInventory } from "../context/InventoryContext";
 import { useLanguage } from "../context/LanguageContext";
 import OrderRow from "../components/OrderRow";
 import DispatchModal from "../components/DispatchModal";
+import CountUp from "../components/CountUp";
+import FuelBadge from "../components/FuelBadge";
+import { playNewOrderSound } from "../utils/soundNotifications";
 import { dashboardApi, activityApi, driverApi, vehicleApi, customerApi, registrationApi } from "../services/api";
 
 function timeAgo(dateString) {
@@ -69,81 +72,57 @@ export default function Dashboard() {
     console.log("[Dashboard] Dashboard loaded successfully - User:", user?.email, "Role:", user?.role);
   }, [user]);
 
-  // Fetch aggregated dashboard metrics, live activities, drivers, vehicles, and customers from backend API
+  // Operational Auditory Feedback: Trigger new order chime on incoming orders
+  const prevOrderCountRef = useRef(orders.length);
+  useEffect(() => {
+    if (orders.length > prevOrderCountRef.current && prevOrderCountRef.current > 0) {
+      playNewOrderSound();
+    }
+    prevOrderCountRef.current = orders.length;
+  }, [orders.length]);
+
+  // Fetch aggregated dashboard metrics, live activities, drivers, vehicles, and customers from backend API in parallel
   useEffect(() => {
     let mounted = true;
-    dashboardApi
-      .getDashboardStats()
-      .then((res) => {
-        if (mounted && res?.data) {
-          setServerStats(res.data);
-        }
-      })
-      .catch((err) => {
-        console.warn("[Dashboard] Aggregated stats API unavailable:", err.message);
-      });
 
-    customerApi
-      .getCustomers()
-      .then((res) => {
-        if (mounted && res?.data) {
-          setCustomersList(res.data);
-        }
-      })
-      .catch((err) => {
-        console.warn("[Dashboard] Customers API unavailable:", err.message);
-      });
+    const canViewAudit = user?.role === "Admin" || user?.role === "Auditor";
 
-    activityApi
-      .getActivities({ limit: 6 })
-      .then((res) => {
-        if (mounted && res?.data) {
-          setActivities(res.data);
-        }
-      })
-      .catch((err) => {
-        console.warn("[Dashboard] Activities API unavailable:", err.message);
-      });
+    Promise.allSettled([
+      dashboardApi.getDashboardStats(),
+      customerApi.getCustomers(),
+      canViewAudit ? activityApi.getActivities({ limit: 6 }) : Promise.resolve({ data: [] }),
+      driverApi.getDrivers(),
+      vehicleApi.getVehicles(),
+      registrationApi.getRegistrations(),
+    ]).then(([statsRes, custRes, actRes, drvRes, vehRes, regRes]) => {
+      if (!mounted) return;
 
-    driverApi
-      .getDrivers()
-      .then((res) => {
-        if (mounted && res?.data) {
-          setDriversList(res.data);
-        }
-      })
-      .catch((err) => {
-        console.warn("[Dashboard] Drivers API unavailable:", err.message);
-      });
-
-    vehicleApi
-      .getVehicles()
-      .then((res) => {
-        if (mounted && res?.data) {
-          setVehiclesList(res.data);
-        }
-      })
-      .catch((err) => {
-        console.warn("[Dashboard] Vehicles API unavailable:", err.message);
-      });
-
-    registrationApi
-      .getRegistrations()
-      .then((res) => {
-        if (mounted && res?.data) {
-          const pending = res.data.filter(
-            (r) => r.status === "Pending" || r.status === "Pending Review"
-          ).length;
-          const approved = res.data.filter(
-            (r) => r.status === "Approved" || r.status === "Verified"
-          ).length;
-          const rejected = res.data.filter((r) => r.status === "Rejected").length;
-          setAppStats({ pending, approved, rejected });
-        }
-      })
-      .catch((err) => {
-        console.warn("[Dashboard] Registrations API unavailable:", err.message);
-      });
+      if (statsRes.status === "fulfilled" && statsRes.value?.data) {
+        setServerStats(statsRes.value.data);
+      }
+      if (custRes.status === "fulfilled" && custRes.value?.data) {
+        setCustomersList(custRes.value.data);
+      }
+      if (actRes.status === "fulfilled" && actRes.value?.data) {
+        setActivities(actRes.value.data);
+      }
+      if (drvRes.status === "fulfilled" && drvRes.value?.data) {
+        setDriversList(drvRes.value.data);
+      }
+      if (vehRes.status === "fulfilled" && vehRes.value?.data) {
+        setVehiclesList(vehRes.value.data);
+      }
+      if (regRes.status === "fulfilled" && regRes.value?.data) {
+        const pending = regRes.value.data.filter(
+          (r) => r.status === "Pending" || r.status === "Pending Review"
+        ).length;
+        const approved = regRes.value.data.filter(
+          (r) => r.status === "Approved" || r.status === "Verified"
+        ).length;
+        const rejected = regRes.value.data.filter((r) => r.status === "Rejected").length;
+        setAppStats({ pending, approved, rejected });
+      }
+    });
 
     return () => {
       mounted = false;
@@ -269,6 +248,10 @@ export default function Dashboard() {
     return count > 0 ? count : Math.min(8, orders.length);
   }, [orders]);
 
+  const totalRevenueNumber = useMemo(() => {
+    return Math.round(orders.reduce((acc, o) => acc + (o.total || (o.qty || 1000) * 89.5), 0));
+  }, [orders]);
+
   const totalRevenueFormatted = useMemo(() => {
     const sum = orders.reduce((acc, o) => acc + (o.total || (o.qty || 1000) * 89.5), 0);
     return `₹${(sum / 100000).toFixed(2)}L`;
@@ -310,7 +293,7 @@ export default function Dashboard() {
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               <div className="clock-indicator">
                 <span className="live-dot-pulse"></span>
-                <span style={{ fontSize: "12px", color: "var(--green-neon)", fontWeight: "700" }}>
+                <span style={{ fontSize: "14px", color: "var(--green-neon)", fontWeight: "700" }}>
                   SYSTEM STATUS: ONLINE
                 </span>
               </div>
@@ -319,14 +302,14 @@ export default function Dashboard() {
 
           {/* Admin 6 KPI Cards Grid (Requirement 9: Total Customers, Pending Customers, Active Drivers, Vehicles, Orders Today, Revenue) */}
           <div className="kpi-grid-6">
-            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--blue)" }}>
+            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--fuel-electric, #3B82F6)" }}>
               <div className="kpi-card-head">
                 <span className="kpi-card-lbl">Total Customers</span>
                 <div className="kpi-icon-badge">
                   <Users size={18} />
                 </div>
               </div>
-              <div className="kpi-val">{customersList.length || serverStats?.kpis?.totalCustomers || 14} Accounts</div>
+              <div className="kpi-val"><CountUp end={customersList.length || serverStats?.kpis?.totalCustomers || 14} /> Accounts</div>
               <div className="kpi-footer">
                 <span className="trend-pill up">
                   <TrendingUp size={12} /> Enterprise
@@ -335,56 +318,56 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--amber)" }}>
+            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--fuel-petrol, #EF4444)" }}>
               <div className="kpi-card-head">
                 <span className="kpi-card-lbl">Pending Customers</span>
                 <div className="kpi-icon-badge">
                   <Clock size={18} />
                 </div>
               </div>
-              <div className="kpi-val">{appStats.pending || 0} Pending</div>
+              <div className="kpi-val"><CountUp end={appStats.pending || 0} /> Pending</div>
               <div className="kpi-footer">
                 <span className="trend-pill down">Requires KYC</span>
                 <span style={{ color: "var(--text-dim)" }}>Awaiting Approval</span>
               </div>
             </div>
 
-            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--green-neon)" }}>
+            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--fuel-cng, #22C55E)" }}>
               <div className="kpi-card-head">
                 <span className="kpi-card-lbl">Active Drivers</span>
                 <div className="kpi-icon-badge">
                   <Users size={18} />
                 </div>
               </div>
-              <div className="kpi-val">{driversOnDuty || serverStats?.kpis?.totalDrivers || driversList.length || 4} Drivers</div>
+              <div className="kpi-val"><CountUp end={driversOnDuty || serverStats?.kpis?.totalDrivers || driversList.length || 4} /> Drivers</div>
               <div className="kpi-footer">
                 <span className="trend-pill up">{driversOnDuty} On Shift</span>
                 <span style={{ color: "var(--text-dim)" }}>GPS Connected</span>
               </div>
             </div>
 
-            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--purple)" }}>
+            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--fuel-electric, #3B82F6)" }}>
               <div className="kpi-card-head">
                 <span className="kpi-card-lbl">Vehicles</span>
                 <div className="kpi-icon-badge">
                   <Truck size={18} />
                 </div>
               </div>
-              <div className="kpi-val">{serverStats?.kpis?.totalVehicles || vehiclesList.length || 4} Tankers</div>
+              <div className="kpi-val"><CountUp end={serverStats?.kpis?.totalVehicles || vehiclesList.length || 4} /> Tankers</div>
               <div className="kpi-footer">
                 <span className="trend-pill up">Live Fleet</span>
                 <span style={{ color: "var(--text-dim)" }}>Telemetry Synced</span>
               </div>
             </div>
 
-            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--orange)" }}>
+            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--fuel-diesel, #F59E0B)" }}>
               <div className="kpi-card-head">
                 <span className="kpi-card-lbl">Orders Today</span>
                 <div className="kpi-icon-badge">
                   <ClipboardList size={18} />
                 </div>
               </div>
-              <div className="kpi-val">{todayOrdersCount} Orders</div>
+              <div className="kpi-val"><CountUp end={todayOrdersCount} /> Orders</div>
               <div className="kpi-footer">
                 <span className="trend-pill up">
                   <TrendingUp size={12} /> Today's Flow
@@ -393,14 +376,20 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--green-neon)" }}>
+            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--fuel-cng, #22C55E)" }}>
               <div className="kpi-card-head">
                 <span className="kpi-card-lbl">Revenue</span>
                 <div className="kpi-icon-badge">
                   <TrendingUp size={18} />
                 </div>
               </div>
-              <div className="kpi-val">{serverStats?.revenue?.total || totalRevenueFormatted}</div>
+              <div className="kpi-val">
+                {typeof serverStats?.revenue?.total === "number" ? (
+                  <CountUp end={serverStats.revenue.total} prefix="₹" />
+                ) : (
+                  <CountUp end={totalRevenueNumber} prefix="₹" />
+                )}
+              </div>
               <div className="kpi-footer">
                 <span className="trend-pill up">
                   <TrendingUp size={12} /> +18.4%
@@ -507,7 +496,7 @@ export default function Dashboard() {
                   <circle cx="500" cy="40" r="5" fill="#FF5E00" />
                 </svg>
 
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "var(--text-dim)", marginTop: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", color: "var(--text-dim)", marginTop: "8px" }}>
                   <span>Mon</span>
                   <span>Tue</span>
                   <span>Wed</span>
@@ -535,14 +524,14 @@ export default function Dashboard() {
                   <path
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                     fill="none"
-                    stroke="var(--orange)"
+                    stroke="var(--fuel-diesel, #F59E0B)"
                     strokeWidth="3.8"
                     strokeDasharray={`${fuelDistribution.hsdPct}, 100`}
                   />
                   <path
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                     fill="none"
-                    stroke="var(--blue)"
+                    stroke="var(--fuel-petrol, #EF4444)"
                     strokeWidth="3.8"
                     strokeDasharray={`${fuelDistribution.msPct}, 100`}
                     strokeDashoffset={`-${fuelDistribution.hsdPct}`}
@@ -550,23 +539,23 @@ export default function Dashboard() {
                   <path
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                     fill="none"
-                    stroke="var(--amber)"
+                    stroke="var(--fuel-cng, #22C55E)"
                     strokeWidth="3.8"
                     strokeDasharray={`${fuelDistribution.bioPct}, 100`}
                     strokeDashoffset={`-${fuelDistribution.hsdPct + fuelDistribution.msPct}`}
                   />
                 </svg>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", fontSize: "12px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", fontSize: "14px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--orange)", fontWeight: "700" }}>● HSD (High Speed Diesel)</span>
+                    <span style={{ color: "var(--fuel-diesel, #F59E0B)", fontWeight: "700" }}>● HSD (High Speed Diesel)</span>
                     <strong>{fuelDistribution.hsdPct}%</strong>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--blue)", fontWeight: "700" }}>● MS (Motor Spirit Petrol)</span>
+                    <span style={{ color: "var(--fuel-petrol, #EF4444)", fontWeight: "700" }}>● MS (Motor Spirit Petrol)</span>
                     <strong>{fuelDistribution.msPct}%</strong>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--amber)", fontWeight: "700" }}>● Speed Diesel / Bio</span>
+                    <span style={{ color: "var(--fuel-cng, #22C55E)", fontWeight: "700" }}>● CNG / Bio-Fuel</span>
                     <strong>{fuelDistribution.bioPct}%</strong>
                   </div>
                 </div>
@@ -574,50 +563,122 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Quick Action Launcher Cards */}
-          <div>
-            <h3 style={{ fontSize: "16px", marginBottom: "14px", fontWeight: "700" }}>Command Quick Actions</h3>
-            <div className="quick-actions-grid-saas">
-              <Link to="/orders" className="action-card-saas">
-                <div className="action-icon-wrapper">
-                  <PlusCircle size={22} />
+          {/* Admin Real-Time Logistics & Telemetry Status Widgets */}
+          <div className="telemetry-status-strip">
+            <div className="telemetry-widget-card">
+              <div className="telemetry-widget-icon" style={{ background: "rgba(34, 197, 94, 0.15)", color: "var(--fuel-cng, #22C55E)" }}>
+                <Activity size={22} />
+              </div>
+              <div>
+                <div style={{ fontSize: "12px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: 700 }}>
+                  GPS Telemetry Health
                 </div>
-                <strong style={{ fontSize: "13px" }}>Create Order</strong>
+                <div style={{ fontSize: "16px", fontWeight: "800", color: "var(--text)" }}>
+                  99.8% Satellite Lock
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--green-neon)", display: "flex", alignItems: "center", gap: "4px" }}>
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#22C55E", display: "inline-block" }}></span>
+                  Sub-second RTK streaming
+                </div>
+              </div>
+            </div>
+
+            <div className="telemetry-widget-card">
+              <div className="telemetry-widget-icon" style={{ background: "rgba(245, 158, 11, 0.15)", color: "var(--fuel-diesel, #F59E0B)" }}>
+                <Truck size={22} />
+              </div>
+              <div>
+                <div style={{ fontSize: "12px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: 700 }}>
+                  Live Active Fleet
+                </div>
+                <div style={{ fontSize: "16px", fontWeight: "800", color: "var(--text)" }}>
+                  {activeVehiclesCount} Transmitting Tankers
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--text-dim)" }}>
+                  {driversOnDuty} Drivers en-route / on shift
+                </div>
+              </div>
+            </div>
+
+            <div className="telemetry-widget-card">
+              <div className="telemetry-widget-icon" style={{ background: "rgba(59, 130, 246, 0.15)", color: "var(--fuel-electric, #3B82F6)" }}>
+                <Building2 size={22} />
+              </div>
+              <div>
+                <div style={{ fontSize: "12px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: 700 }}>
+                  Depot Gate Throughput
+                </div>
+                <div style={{ fontSize: "16px", fontWeight: "800", color: "var(--text)" }}>
+                  5 Regional Hubs Online
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--blue)" }}>
+                  Avg dispatch time: 14 mins
+                </div>
+              </div>
+            </div>
+
+            <div className="telemetry-widget-card">
+              <div className="telemetry-widget-icon" style={{ background: "rgba(239, 68, 68, 0.15)", color: "var(--fuel-petrol, #EF4444)" }}>
+                <ShieldCheck size={22} />
+              </div>
+              <div>
+                <div style={{ fontSize: "12px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: 700 }}>
+                  Emergency Systems
+                </div>
+                <div style={{ fontSize: "16px", fontWeight: "800", color: "var(--text)" }}>
+                  Zero Critical Alarms
+                </div>
+                <div style={{ fontSize: "12px", color: "var(--green-neon)" }}>
+                  Automatic cutoff armed & verified
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Admin Platform Governance Quick Action Launcher */}
+          <div>
+            <h3 style={{ fontSize: "17px", marginBottom: "14px", fontWeight: "700" }}>Platform Governance & Control</h3>
+            <div className="quick-actions-grid-saas">
+              <Link to="/users" className="action-card-saas">
+                <div className="action-icon-wrapper" style={{ background: "rgba(239, 68, 68, 0.15)", color: "#ef4444" }}>
+                  <Users size={22} />
+                </div>
+                <strong style={{ fontSize: "15px" }}>Users & Roles</strong>
+              </Link>
+
+              <Link to="/pricing" className="action-card-saas">
+                <div className="action-icon-wrapper" style={{ background: "rgba(249, 115, 22, 0.15)", color: "var(--orange)" }}>
+                  <Fuel size={22} />
+                </div>
+                <strong style={{ fontSize: "15px" }}>Fuel Tariffs</strong>
+              </Link>
+
+              <Link to="/applications" className="action-card-saas">
+                <div className="action-icon-wrapper" style={{ background: "rgba(16, 185, 129, 0.15)", color: "var(--green-neon)" }}>
+                  <FileCheck size={22} />
+                </div>
+                <strong style={{ fontSize: "15px" }}>Customer Approvals</strong>
+              </Link>
+
+              <Link to="/audit-logs" className="action-card-saas">
+                <div className="action-icon-wrapper" style={{ background: "rgba(139, 92, 246, 0.15)", color: "var(--purple)" }}>
+                  <ShieldCheck size={22} />
+                </div>
+                <strong style={{ fontSize: "15px" }}>Audit Trail</strong>
               </Link>
 
               <Link to="/fleet-map" className="action-card-saas">
-                <div className="action-icon-wrapper">
+                <div className="action-icon-wrapper" style={{ background: "rgba(59, 130, 246, 0.15)", color: "var(--blue)" }}>
                   <Navigation size={22} />
                 </div>
-                <strong style={{ fontSize: "13px" }}>Track Fleet</strong>
-              </Link>
-
-              <Link to="/inventory" className="action-card-saas">
-                <div className="action-icon-wrapper">
-                  <Database size={22} />
-                </div>
-                <strong style={{ fontSize: "13px" }}>Inventory</strong>
+                <strong style={{ fontSize: "15px" }}>Fleet Map (All)</strong>
               </Link>
 
               <Link to="/reports" className="action-card-saas">
-                <div className="action-icon-wrapper">
+                <div className="action-icon-wrapper" style={{ background: "rgba(245, 158, 11, 0.15)", color: "var(--amber)" }}>
                   <BarChart3 size={22} />
                 </div>
-                <strong style={{ fontSize: "13px" }}>Reports</strong>
-              </Link>
-
-              <Link to="/drivers" className="action-card-saas">
-                <div className="action-icon-wrapper">
-                  <Truck size={22} />
-                </div>
-                <strong style={{ fontSize: "13px" }}>Manage Drivers</strong>
-              </Link>
-
-              <Link to="/customers" className="action-card-saas">
-                <div className="action-icon-wrapper">
-                  <Users size={22} />
-                </div>
-                <strong style={{ fontSize: "13px" }}>Manage Customers</strong>
+                <strong style={{ fontSize: "15px" }}>Depot Analytics</strong>
               </Link>
             </div>
           </div>
@@ -637,13 +698,13 @@ export default function Dashboard() {
                 <table>
                   <thead>
                     <tr>
-                      <th>Order #</th>
-                      <th>Customer</th>
-                      <th>Fuel</th>
-                      <th>Qty</th>
-                      <th>Driver</th>
-                      <th>Status</th>
-                      <th>Actions</th>
+                      <th scope="col">Order #</th>
+                      <th scope="col">Customer</th>
+                      <th scope="col">Fuel</th>
+                      <th scope="col">Qty</th>
+                      <th scope="col">Driver</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -657,10 +718,10 @@ export default function Dashboard() {
 
             {/* Timeline Stream */}
             <div className="activity-stream-panel">
-              <h3 style={{ fontSize: "16px", fontWeight: "700" }}>Live Activity Stream</h3>
+              <h3 style={{ fontSize: "17px", fontWeight: "700" }}>Live Activity Stream</h3>
               <div className="activity-list">
                 {activities.length === 0 ? (
-                  <div style={{ padding: "20px 10px", color: "var(--text-dim)", fontSize: "12px", textAlign: "center" }}>
+                  <div style={{ padding: "20px 10px", color: "var(--text-dim)", fontSize: "14px", textAlign: "center" }}>
                     No recent activities recorded.
                   </div>
                 ) : (
@@ -678,11 +739,11 @@ export default function Dashboard() {
                         )}
                       </div>
                       <div>
-                        <strong style={{ fontSize: "12px", color: "var(--text)" }}>{act.action}</strong>
-                        <p style={{ margin: "2px 0 0", fontSize: "11px", color: "var(--text-dim)" }}>
+                        <strong style={{ fontSize: "14px", color: "var(--text)" }}>{act.action}</strong>
+                        <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--text-dim)" }}>
                           {act.details || act.description || `Performed by ${act.userName || "System"}`}
                         </p>
-                        <small style={{ color: "var(--orange)", fontSize: "10px", fontWeight: "700" }}>
+                        <small style={{ color: "var(--orange)", fontSize: "12px", fontWeight: "700" }}>
                           {timeAgo(act.createdAt || act.timestamp)}
                         </small>
                       </div>
@@ -737,70 +798,70 @@ export default function Dashboard() {
 
           {/* Depot Operations Top KPIs (Requirement 9: Inventory, Orders, Deliveries) */}
           <div className="kpi-grid-6">
-            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--amber)" }}>
+            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--fuel-diesel, #F59E0B)" }}>
               <div className="kpi-card-head">
                 <span className="kpi-card-lbl">Inventory</span>
                 <div className="kpi-icon-badge">
                   <Database size={18} />
                 </div>
               </div>
-              <div className="kpi-val">{(serverStats?.kpis?.availableFuelStock || totalTanksFuel).toLocaleString()} L</div>
+              <div className="kpi-val"><CountUp end={serverStats?.kpis?.availableFuelStock || totalTanksFuel} suffix=" L" /></div>
               <div className="kpi-footer">
                 <span className="trend-pill up">{tanks.length || 4} Tanks</span>
                 <span style={{ color: "var(--text-dim)" }}>Available Stock</span>
               </div>
             </div>
 
-            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--orange)" }}>
+            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--fuel-diesel, #F59E0B)" }}>
               <div className="kpi-card-head">
                 <span className="kpi-card-lbl">Orders</span>
                 <div className="kpi-icon-badge">
                   <ClipboardList size={18} />
                 </div>
               </div>
-              <div className="kpi-val">{serverStats?.kpis?.depotOrders || stats.totalCount} Orders</div>
+              <div className="kpi-val"><CountUp end={serverStats?.kpis?.depotOrders || stats.totalCount} /> Orders</div>
               <div className="kpi-footer">
                 <span className="trend-pill up">{stats.completed} Delivered</span>
                 <span style={{ color: "var(--text-dim)" }}>Total Runs</span>
               </div>
             </div>
 
-            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--red)" }}>
+            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--fuel-petrol, #EF4444)" }}>
               <div className="kpi-card-head">
                 <span className="kpi-card-lbl">Deliveries</span>
                 <div className="kpi-icon-badge">
                   <Clock size={18} />
                 </div>
               </div>
-              <div className="kpi-val">{serverStats?.kpis?.pendingDeliveries || (pendingCount + stats.active)} Deliveries</div>
+              <div className="kpi-val"><CountUp end={serverStats?.kpis?.pendingDeliveries || (pendingCount + stats.active)} /> Deliveries</div>
               <div className="kpi-footer">
                 <span className="trend-pill down">Action Queue</span>
                 <span style={{ color: "var(--text-dim)" }}>Active & En-Route</span>
               </div>
             </div>
 
-            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--blue)" }}>
+            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--fuel-electric, #3B82F6)" }}>
               <div className="kpi-card-head">
                 <span className="kpi-card-lbl">Active Drivers</span>
                 <div className="kpi-icon-badge">
                   <Users size={18} />
                 </div>
               </div>
-              <div className="kpi-val">{serverStats?.kpis?.activeDrivers || driversOnDuty} Active</div>
+              <div className="kpi-val"><CountUp end={serverStats?.kpis?.activeDrivers || driversOnDuty} /> Active</div>
               <div className="kpi-footer">
                 <span className="trend-pill up">{Math.max(0, driversTotal - driversOnDuty)} Resting</span>
                 <span style={{ color: "var(--text-dim)" }}>Shift Active</span>
               </div>
             </div>
 
-            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--green-neon)" }}>
+            <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--fuel-cng, #22C55E)" }}>
               <div className="kpi-card-head">
                 <span className="kpi-card-lbl">Vehicles Active</span>
                 <div className="kpi-icon-badge">
                   <ShieldCheck size={18} />
                 </div>
               </div>
-              <div className="kpi-val">{activeVehiclesCount} Tankers</div>
+              <div className="kpi-val"><CountUp end={activeVehiclesCount} /> Tankers</div>
               <div className="kpi-footer">
                 <span className="trend-pill up">GPS Live</span>
                 <span style={{ color: "var(--text-dim)" }}>Fleet Tracked</span>
@@ -814,87 +875,231 @@ export default function Dashboard() {
                   <Activity size={18} />
                 </div>
               </div>
-              <div className="kpi-val">{invReservePct}% Loaded</div>
+              <div className="kpi-val"><CountUp end={invReservePct} suffix="% Loaded" /></div>
               <div className="kpi-footer">
                 <span className="trend-pill up">{totalTanksFuel.toLocaleString()}L / {totalTanksCapacity.toLocaleString()}L</span>
               </div>
             </div>
           </div>
 
-          {/* Customer Applications & KYC Verification Counters (Depot Manager Dashboard) */}
+          {/* Depot Operational Dispatch & Fleet Telemetry Counters (Depot Manager Dashboard) */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "16px", marginBottom: "20px" }}>
-            <Link to="/applications" style={{ textDecoration: "none" }}>
+            <Link to="/pending-requests" style={{ textDecoration: "none" }}>
               <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--amber)", cursor: "pointer" }}>
                 <div className="kpi-card-head">
-                  <span className="kpi-card-lbl">Pending Applications</span>
+                  <span className="kpi-card-lbl">Pending Order Approvals</span>
                   <div className="kpi-icon-badge">
                     <Clock size={18} />
                   </div>
                 </div>
-                <div className="kpi-val" style={{ color: "var(--amber)" }}>{appStats.pending} Applications</div>
+                <div className="kpi-val" style={{ color: "var(--amber)" }}>{pendingRequests.length} Orders</div>
                 <div className="kpi-footer">
                   <span className="trend-pill down">Requires Action</span>
-                  <span style={{ color: "var(--text-dim)" }}>Awaiting Approval</span>
+                  <span style={{ color: "var(--text-dim)" }}>Depot Queue</span>
                 </div>
               </div>
             </Link>
 
-            <Link to="/applications" style={{ textDecoration: "none" }}>
+            <Link to="/fleet-map" style={{ textDecoration: "none" }}>
               <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--green-neon)", cursor: "pointer" }}>
                 <div className="kpi-card-head">
-                  <span className="kpi-card-lbl">Approved Customers</span>
+                  <span className="kpi-card-lbl">Active Tankers on Road</span>
                   <div className="kpi-icon-badge">
-                    <CheckCircle2 size={18} />
+                    <Truck size={18} />
                   </div>
                 </div>
-                <div className="kpi-val" style={{ color: "var(--green-neon)" }}>{appStats.approved || customersList.length} Verified</div>
+                <div className="kpi-val" style={{ color: "var(--green-neon)" }}>{activeVehiclesCount} Active</div>
                 <div className="kpi-footer">
-                  <span className="trend-pill up">Active Accounts</span>
-                  <span style={{ color: "var(--text-dim)" }}>KYC Verified</span>
+                  <span className="trend-pill up">Depot Radar</span>
+                  <span style={{ color: "var(--text-dim)" }}>GPS Connected</span>
                 </div>
               </div>
             </Link>
           </div>
 
-          {/* Depot Manager Fuel Tank Telemetry Section */}
-          <div>
-            <h3 style={{ fontSize: "18px", fontWeight: "700", marginBottom: "16px" }}>
-              Depot Tank Telemetry & Refill Status
-            </h3>
-            <div className="depot-tank-cards-grid">
+          {/* Animated Depot Operational Health & Inventory Visualization */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }}>
+            <div className="card" style={{ padding: "20px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <Building2 size={20} style={{ color: "var(--fuel-diesel, #F59E0B)" }} />
+                  <h4 style={{ margin: 0, fontSize: "16px", fontWeight: "700" }}>Depot Offloading Bays & Throughput</h4>
+                </div>
+                <span className="pill" style={{ "--pill-color": "var(--green-neon)" }}>GATES ACTIVE</span>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "var(--panel-alt)", borderRadius: "10px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span className="depot-bay-indicator depot-bay-active">Bay 1</span>
+                    <span style={{ fontSize: "13.5px", fontWeight: "600" }}>Bulk Offload • TN-01-FL-1001</span>
+                  </div>
+                  <span style={{ fontSize: "12px", color: "var(--green-neon)", fontWeight: "700" }}>Discharging 450 L/min</span>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "var(--panel-alt)", borderRadius: "10px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span className="depot-bay-indicator depot-bay-standby">Bay 2</span>
+                    <span style={{ fontSize: "13.5px", fontWeight: "600" }}>Standby • Next: TN-38-FL-2002</span>
+                  </div>
+                  <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>Ready for Docking</span>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "var(--panel-alt)", borderRadius: "10px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span className="depot-bay-indicator depot-bay-active">Safety</span>
+                    <span style={{ fontSize: "13.5px", fontWeight: "600" }}>Vapor Recovery Unit</span>
+                  </div>
+                  <span style={{ fontSize: "12px", color: "var(--green-neon)", fontWeight: "700" }}>Pressure 1.02 bar (Safe)</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: "20px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <Fuel size={20} style={{ color: "var(--fuel-cng, #22C55E)" }} />
+                  <h4 style={{ margin: 0, fontSize: "16px", fontWeight: "700" }}>Bulk Terminal Inventory Visualization</h4>
+                </div>
+                <span style={{ fontSize: "13px", color: "var(--text-dim)" }}>
+                  Total Reserve: <strong>{totalTanksFuel.toLocaleString()} L</strong>
+                </span>
+              </div>
+
+              {/* Multi-segment fuel reserve progress bar */}
+              <div style={{ height: "14px", background: "var(--panel-alt)", borderRadius: "999px", overflow: "hidden", display: "flex", marginBottom: "14px" }}>
+                <div style={{ width: `${fuelDistribution.hsdPct}%`, background: "var(--fuel-diesel, #F59E0B)", title: "Diesel" }}></div>
+                <div style={{ width: `${fuelDistribution.msPct}%`, background: "var(--fuel-petrol, #EF4444)", title: "Petrol" }}></div>
+                <div style={{ width: `${fuelDistribution.bioPct}%`, background: "var(--fuel-cng, #22C55E)", title: "CNG/Bio" }}></div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", textAlign: "center" }}>
+                <div style={{ padding: "8px", background: "var(--panel-alt)", borderRadius: "8px" }}>
+                  <div style={{ color: "var(--fuel-diesel, #F59E0B)", fontWeight: "700", fontSize: "13px" }}>Diesel (HSD)</div>
+                  <div style={{ fontSize: "16px", fontWeight: "800" }}>{fuelDistribution.hsdPct}%</div>
+                </div>
+                <div style={{ padding: "8px", background: "var(--panel-alt)", borderRadius: "8px" }}>
+                  <div style={{ color: "var(--fuel-petrol, #EF4444)", fontWeight: "700", fontSize: "13px" }}>Petrol (MS)</div>
+                  <div style={{ fontSize: "16px", fontWeight: "800" }}>{fuelDistribution.msPct}%</div>
+                </div>
+                <div style={{ padding: "8px", background: "var(--panel-alt)", borderRadius: "8px" }}>
+                  <div style={{ color: "var(--fuel-cng, #22C55E)", fontWeight: "700", fontSize: "13px" }}>CNG / Bio</div>
+                  <div style={{ fontSize: "16px", fontWeight: "800" }}>{fuelDistribution.bioPct}%</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Depot Manager 3D Cylindrical Fuel Tank Telemetry Section with Liquid Wave Animations */}
+          <div style={{ marginBottom: "24px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <div>
+                <h3 style={{ fontSize: "20px", fontWeight: "700", margin: 0 }}>
+                  Depot Silo Telemetry & Real-Time Fuel Level
+                </h3>
+                <p style={{ margin: "4px 0 0", fontSize: "13.5px", color: "var(--text-dim)" }}>
+                  Continuous hydrostatic pressure, temperature monitoring & animated liquid levels
+                </p>
+              </div>
+              <span className="pill" style={{ "--pill-color": "var(--fuel-diesel, #F59E0B)" }}>
+                RADAR TELEMETRY LIVE
+              </span>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "18px" }}>
               {tanks.map((tank) => {
                 const currentStock = tank.currentQty != null ? tank.currentQty : tank.currentStock != null ? tank.currentStock : tank.current || 0;
                 const capacity = tank.capacityQty != null ? tank.capacityQty : tank.capacity || 1;
                 const pct = Math.round((currentStock / capacity) * 100);
                 const isWarning = pct <= 30;
+                const fuelColor =
+                  tank.fuelCode === "HSD" || tank.fuelCode === "DIESEL"
+                    ? "var(--fuel-diesel, #F59E0B)"
+                    : tank.fuelCode === "MS" || tank.fuelCode === "PETROL"
+                    ? "var(--fuel-petrol, #EF4444)"
+                    : tank.fuelCode === "CNG"
+                    ? "var(--fuel-cng, #22C55E)"
+                    : "var(--fuel-electric, #3B82F6)";
+
                 return (
-                  <div key={tank.id} className="tank-card-saas">
+                  <div key={tank.id} className="cylindrical-tank-card">
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <strong style={{ fontSize: "15px" }}>{tank.fuelCode} ({tank.name})</strong>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <FuelBadge fuelType={tank.fuelCode} label={tank.fuelCode} />
+                        <strong style={{ fontSize: "16px" }}>{tank.name}</strong>
+                      </div>
                       <span className={`pill ${isWarning ? "pill-danger" : ""}`} style={{ "--pill-color": isWarning ? "var(--red)" : "var(--green-neon)" }}>
                         {isWarning ? "LOW STOCK ALERT" : "HEALTHY RESERVE"}
                       </span>
                     </div>
 
-                    <div style={{ fontSize: "24px", fontWeight: "800", color: "var(--text)" }}>
-                      {pct}% <small style={{ fontSize: "13px", color: "var(--text-dim)" }}>filled</small>
+                    <div className="tank-silo-wrapper">
+                      {/* 3D Cylindrical Silo with Fluid Wave Motion */}
+                      <div className="cylindrical-tank-silo">
+                        <div className="cylindrical-tank-top"></div>
+
+                        {/* Sight Gauge Hash Marks */}
+                        <div className="tank-sight-gauge">
+                          <div className="tank-gauge-mark" title="100%"></div>
+                          <div className="tank-gauge-mark" title="75%"></div>
+                          <div className="tank-gauge-mark" title="50%"></div>
+                          <div className="tank-gauge-mark" title="25%"></div>
+                          <div className="tank-gauge-mark" title="0%"></div>
+                        </div>
+
+                        {/* Dynamic Animated Liquid Fuel Level with Wave Shimmer */}
+                        <div
+                          className="cylindrical-tank-liquid"
+                          style={{
+                            height: `${Math.max(10, Math.min(95, pct))}%`,
+                            background: `linear-gradient(180deg, color-mix(in srgb, ${fuelColor} 80%, white) 0%, ${fuelColor} 100%)`,
+                            boxShadow: `0 0 16px color-mix(in srgb, ${fuelColor} 50%, transparent)`,
+                          }}
+                        >
+                          <svg className="tank-liquid-wave" viewBox="0 0 600 24" preserveAspectRatio="none">
+                            <path
+                              d="M 0 12 Q 75 0, 150 12 T 300 12 T 450 12 T 600 12 L 600 24 L 0 24 Z"
+                              fill="rgba(255, 255, 255, 0.35)"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+
+                      {/* Tank Readout Metrics */}
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
+                          <span style={{ fontSize: "30px", fontWeight: "800", color: "var(--text)", fontFamily: "'Oswald', sans-serif" }}>
+                            {pct}%
+                          </span>
+                          <span style={{ fontSize: "14px", color: "var(--text-dim)" }}>
+                            ({currentStock.toLocaleString()} L)
+                          </span>
+                        </div>
+
+                        <div style={{ fontSize: "13px", color: "var(--text-dim)", display: "flex", flexDirection: "column", gap: "5px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span>Total Capacity:</span>
+                            <strong>{capacity.toLocaleString()} L</strong>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span>Available Ullage:</span>
+                            <strong style={{ color: "var(--fuel-electric, #3B82F6)" }}>{(capacity - currentStock).toLocaleString()} L</strong>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span>Est. Days Run:</span>
+                            <strong style={{ color: isWarning ? "var(--red)" : "var(--green-neon)" }}>
+                              {isWarning ? "3 Days Left" : "14 Days Left"}
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Progress Bar */}
-                    <div className="gauge-bar-outer" style={{ height: "10px" }}>
-                      <div
-                        className="gauge-bar-fill"
-                        style={{
-                          width: `${pct}%`,
-                          backgroundColor: isWarning ? "var(--red)" : "var(--green-neon)",
-                          boxShadow: `0 0 10px ${isWarning ? "var(--red-glow)" : "var(--green-glow)"}`,
-                        }}
-                      ></div>
-                    </div>
-
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "var(--text-dim)" }}>
-                      <span>Capacity: {capacity.toLocaleString()} L</span>
-                      <span>Est. Days: {isWarning ? "3 Days Left" : "14 Days Left"}</span>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "10px", borderTop: "1px dashed var(--line)", fontSize: "12px", color: "var(--text-dim)" }}>
+                      <span>Sensor: Temp 24°C • Press 1.02 bar</span>
+                      <span style={{ color: isWarning ? "var(--red)" : "var(--green-neon)", fontWeight: 700 }}>
+                        {isWarning ? "⚠️ Refill Required" : "✓ Telemetry Nominal"}
+                      </span>
                     </div>
                   </div>
                 );
@@ -917,14 +1122,14 @@ export default function Dashboard() {
               <table>
                 <thead>
                   <tr>
-                    <th>Order #</th>
-                    <th>Customer Name</th>
-                    <th>Site / City</th>
-                    <th>Fuel Code</th>
-                    <th>Requested Qty</th>
-                    <th>Est. Value</th>
-                    <th>Status</th>
-                    <th>Manager Actions</th>
+                    <th scope="col">Order #</th>
+                    <th scope="col">Customer Name</th>
+                    <th scope="col">Site / City</th>
+                    <th scope="col">Fuel Code</th>
+                    <th scope="col">Requested Qty</th>
+                    <th scope="col">Est. Value</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Manager Actions</th>
                   </tr>
                 </thead>
                 <tbody>

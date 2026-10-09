@@ -13,6 +13,7 @@ const Vehicle = require('./models/Vehicle');
 const CustomerRegistration = require('./models/CustomerRegistration');
 const FuelPricing = require('./models/FuelPricing');
 const Notification = require('./models/Notification');
+const { getDepotForCity } = require('./utils/depotScope');
 
 const users = [
   {
@@ -21,6 +22,17 @@ const users = [
     password: 'pravin123',
     role: 'Depot Manager',
     city: 'Chennai',
+    depot: 'DEP-CHN-01',
+    isActive: true,
+  },
+  {
+    name: 'Suresh Babu',
+    email: 'coimbatore.mgr@fdms.com',
+    password: 'manager123',
+    role: 'Depot Manager',
+    city: 'Coimbatore',
+    depot: 'DEP-CBE-05',
+    isActive: true,
   },
   {
     name: 'Arun Ventures',
@@ -28,6 +40,8 @@ const users = [
     password: 'admin123',
     role: 'Admin',
     city: 'Chennai',
+    depot: 'ALL',
+    isActive: true,
   },
   {
     name: 'Chennai Steel Works',
@@ -468,10 +482,10 @@ const importData = async () => {
       await User.create(u); // Triggers bcrypt pre-save hook
     }
     await FuelPricing.insertMany(fuelPricing);
-    await Tank.insertMany(tanks);
-    await Driver.insertMany(drivers);
-    await Vehicle.insertMany(vehicles);
-    await Order.insertMany(orders);
+    await Tank.insertMany(tanks.map((t) => ({ ...t, depot: t.depot || 'DEP-CHN-01' })));
+    await Driver.insertMany(drivers.map((d) => ({ ...d, depot: d.depot || 'DEP-CHN-01' })));
+    await Vehicle.insertMany(vehicles.map((v) => ({ ...v, depot: v.depot || getDepotForCity(v.dest || 'Chennai') })));
+    await Order.insertMany(orders.map((o) => ({ ...o, depot: o.depot || getDepotForCity(o.city || 'Chennai') })));
     await CustomerRegistration.insertMany(registrations);
     await Notification.insertMany(notifications);
 

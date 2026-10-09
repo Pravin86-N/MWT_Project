@@ -79,14 +79,15 @@ export default function NewOrderModal({ open, onClose, onCreate, initialData }) 
       <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
         <div className="modal-head">
           <h3>New Order</h3>
-          <button type="button" className="icon-btn" onClick={onClose}>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close new order modal">
             <X size={18} />
           </button>
         </div>
 
-        <label className="field">
+        <label className="field" htmlFor="new-order-customer">
           <span>{t("customer")}</span>
           <input
+            id="new-order-customer"
             ref={firstFieldRef}
             value={customer}
             onChange={(e) => setCustomer(e.target.value)}
@@ -96,9 +97,14 @@ export default function NewOrderModal({ open, onClose, onCreate, initialData }) 
         </label>
 
         <div className="field-row">
-          <label className="field">
+          <label className="field" htmlFor="new-order-fuel">
             <span>{t("fuelType")}</span>
-            <select value={fuelCode} onChange={(e) => setFuelCode(e.target.value)}>
+            <select
+              id="new-order-fuel"
+              value={fuelCode}
+              onChange={(e) => setFuelCode(e.target.value)}
+              aria-label={t("fuelType") || "Fuel Type"}
+            >
               {FUEL_TYPES.map((f) => (
                 <option key={f.code} value={f.code}>
                   {f.name} — ₹{f.price}/L
@@ -106,15 +112,27 @@ export default function NewOrderModal({ open, onClose, onCreate, initialData }) 
               ))}
             </select>
           </label>
-          <label className="field">
+          <label className="field" htmlFor="new-order-qty">
             <span>{t("quantityL")}</span>
-            <input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} />
+            <input
+              id="new-order-qty"
+              type="number"
+              min="1"
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+            />
           </label>
         </div>
 
-        <label className="field">
+        <label className="field" htmlFor="new-order-city">
           <span>{t("deliveryCity")} / Delivery Site Address</span>
-          <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Guindy Industrial Estate, Chennai" required />
+          <input
+            id="new-order-city"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            placeholder="e.g. Guindy Industrial Estate, Chennai"
+            required
+          />
         </label>
 
         <div className="preview">

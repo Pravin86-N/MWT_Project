@@ -1,0 +1,19 @@
+# FuelNet 360 - Enterprise Fuel Delivery Management System
+User-agent: *
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /orders
+Disallow: /customers
+Disallow: /fleet-map
+Disallow: /inventory
+Disallow: /reports
+Disallow: /vehicles
+Disallow: /pending-requests
+Disallow: /dispatch
+Disallow: /audit-logs
+Disallow: /applications
+Disallow: /invoices
+Disallow: /settings
+Allow: /login
+Allow: /register
+Allow: /

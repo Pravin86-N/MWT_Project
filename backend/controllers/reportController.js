@@ -4,6 +4,7 @@ const Tank = require('../models/Tank');
 const Vehicle = require('../models/Vehicle');
 const User = require('../models/User');
 const CustomerRegistration = require('../models/CustomerRegistration');
+const { scopeToDepot } = require('../utils/depotScope');
 
 // @desc    Generate full reports suite (KPIs + Customer, Order, Delivery, Inventory tables)
 // @route   GET /api/reports/summary, GET /api/reports, GET /api/reports/dashboard
@@ -12,11 +13,13 @@ const getReportsSummary = async (req, res, next) => {
   try {
     console.log('[FDMS Backend] Compiling comprehensive reports from MongoDB collections...');
 
+    const depotFilter = scopeToDepot(req, {});
+
     const [orders, drivers, tanks, vehicles, users, registrations] = await Promise.all([
-      Order.find({}).sort({ createdAt: -1 }),
-      Driver.find({}),
-      Tank.find({}),
-      Vehicle.find({}),
+      Order.find(depotFilter).sort({ createdAt: -1 }),
+      Driver.find(depotFilter),
+      Tank.find(depotFilter),
+      Vehicle.find(depotFilter),
       User.find({}),
       CustomerRegistration.find({}).sort({ createdAt: -1 }),
     ]);
@@ -294,6 +297,8 @@ const getReportsSummary = async (req, res, next) => {
     const responsePayload = {
       success: true,
       data: {
+        activeDepot: req.user?.role === 'Depot Manager' ? (req.user.depot || 'DEP-CHN-01') : (req.query?.depot || 'All'),
+        isDepotScoped: req.user?.role === 'Depot Manager',
         kpis: {
           totalOrders,
           completedOrdersCount: completedOrders.length,

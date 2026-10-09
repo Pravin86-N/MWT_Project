@@ -40,6 +40,11 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    depot: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     creditLimit: {
       type: Number,
       default: 0,
@@ -60,9 +65,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
     status: {
       type: String,
-      enum: ['Pending', 'Approved', 'Rejected', 'Active'],
+      enum: ['Pending', 'Approved', 'Rejected', 'Active', 'Inactive'],
       default: 'Active',
     },
     loginProvider: {

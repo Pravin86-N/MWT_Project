@@ -7,7 +7,7 @@ const fuelPricingSchema = new mongoose.Schema(
       required: true,
       unique: true,
       uppercase: true,
-      enum: ['DSL', 'PTL', 'LPG', 'KRS'],
+      enum: ['DSL', 'PTL', 'LPG', 'KRS', 'HSD', 'MS', 'JET-A1', 'BIO-D'],
     },
     name: {
       type: String,

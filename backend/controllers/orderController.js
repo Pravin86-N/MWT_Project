@@ -7,6 +7,7 @@ const Driver = require('../models/Driver');
 const Notification = require('../models/Notification');
 const { logActivity } = require('./activityController');
 const { emitNotification } = require('../config/socket');
+const { scopeToDepot, getDepotForCity } = require('../utils/depotScope');
 
 // Helper to calculate pricing
 const calculateOrderPricing = async (fuelType, quantity) => {
@@ -111,6 +112,7 @@ const createOrder = async (req, res, next) => {
       deliveryAddress: selectedAddress.trim(),
       site: selectedAddress.trim(),
       city: city || (req.user ? req.user.city : 'Chennai') || 'Chennai',
+      depot: req.body.depot || getDepotForCity(city || (req.user ? req.user.city : 'Chennai')),
       slot: slot || '08:00-10:00',
       status: 'Pending', // Customer creates order; initially Pending for Depot Manager
       subtotal: pricing.subtotal,
@@ -186,7 +188,7 @@ const createOrder = async (req, res, next) => {
 const getOrders = async (req, res, next) => {
   try {
     const { status, customerId, customer, fuelType, search } = req.query;
-    const filter = {};
+    let filter = {};
 
     if (status) {
       if (status === 'In Transit' || status === 'InTransit') {
@@ -215,6 +217,41 @@ const getOrders = async (req, res, next) => {
       ];
     }
 
+    // Role-based and depot-based scoping
+    if (req.user?.role === 'Customer') {
+      filter.$or = [
+        { customerId: req.user._id },
+        { customer: new RegExp(req.user.name, 'i') },
+      ];
+    } else if (req.user?.role === 'Driver') {
+      filter.driver = new RegExp(req.user.name, 'i');
+    } else {
+      filter = scopeToDepot(req, filter);
+    }
+
+    // Support pagination if requested via query
+    const page = parseInt(req.query.page, 10);
+    const limit = parseInt(req.query.limit, 10);
+
+    if (page || limit) {
+      const p = Math.max(1, page || 1);
+      const l = Math.max(1, limit || 10);
+      const skip = (p - 1) * l;
+      const totalRecords = await Order.countDocuments(filter);
+      const totalPages = Math.ceil(totalRecords / l) || 1;
+      const paginatedOrders = await Order.find(filter).sort({ createdAt: -1 }).skip(skip).limit(l);
+
+      return res.status(200).json({
+        success: true,
+        data: paginatedOrders,
+        page: p,
+        limit: l,
+        totalRecords,
+        totalPages,
+        count: paginatedOrders.length,
+      });
+    }
+
     const orders = await Order.find(filter).sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -232,7 +269,10 @@ const getOrders = async (req, res, next) => {
 // @access  Protected (Depot Manager, Admin)
 const getPendingOrders = async (req, res, next) => {
   try {
-    const pendingOrders = await Order.find({ status: 'Pending' }).sort({
+    let filter = { status: { $in: ['Pending', 'Pending Approval'] } };
+    filter = scopeToDepot(req, filter);
+
+    const pendingOrders = await Order.find(filter).sort({
       createdAt: -1,
     });
 
@@ -251,7 +291,7 @@ const getPendingOrders = async (req, res, next) => {
 // @access  Protected (Depot Manager, Admin)
 const getDeliveryQueue = async (req, res, next) => {
   try {
-    const queueOrders = await Order.find({
+    let filter = {
       status: {
         $in: [
           'Approved',
@@ -261,7 +301,10 @@ const getDeliveryQueue = async (req, res, next) => {
           'Dispatched',
         ],
       },
-    }).sort({ approvedAt: -1, createdAt: -1 });
+    };
+    filter = scopeToDepot(req, filter);
+
+    const queueOrders = await Order.find(filter).sort({ approvedAt: -1, createdAt: -1 });
 
     res.status(200).json({
       success: true,

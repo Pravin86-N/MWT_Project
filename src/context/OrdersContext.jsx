@@ -40,6 +40,18 @@ export function OrdersProvider({ children }) {
 
   // Load orders from backend API on mount
   const fetchOrders = useCallback(async () => {
+    const token = localStorage.getItem("fdms-token") || localStorage.getItem("token");
+    if (!token) {
+      const saved = localStorage.getItem("fdms-orders");
+      if (saved) {
+        try {
+          dispatch({ type: "LOAD", payload: JSON.parse(saved) });
+        } catch (_) {}
+      }
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {

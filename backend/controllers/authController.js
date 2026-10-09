@@ -73,6 +73,7 @@ const register = async (req, res, next) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        depot: user.depot || (user.role === 'Admin' ? 'ALL' : 'DEP-CHN-01'),
         site: user.site,
         city: user.city,
         creditLimit: user.creditLimit,
@@ -85,6 +86,7 @@ const register = async (req, res, next) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        depot: user.depot || (user.role === 'Admin' ? 'ALL' : 'DEP-CHN-01'),
         site: user.site,
         city: user.city,
         creditLimit: user.creditLimit,
@@ -183,6 +185,7 @@ const login = async (req, res, next) => {
           name: user.name,
           email: user.email,
           role: user.role,
+          depot: user.depot || (user.role === 'Admin' ? 'ALL' : 'DEP-CHN-01'),
           site: user.site,
           city: user.city,
           creditLimit: user.creditLimit,
@@ -195,6 +198,7 @@ const login = async (req, res, next) => {
           name: user.name,
           email: user.email,
           role: user.role,
+          depot: user.depot || (user.role === 'Admin' ? 'ALL' : 'DEP-CHN-01'),
           site: user.site,
           city: user.city,
           creditLimit: user.creditLimit,
@@ -233,15 +237,198 @@ const getMe = async (req, res, next) => {
 
 // @desc    Get all users
 // @route   GET /api/auth/users
-// @access  Private (Admin, Depot Manager)
+// @access  Private (Admin, Auditor)
 const getAllUsers = async (req, res, next) => {
   try {
-    const users = await User.find({}).select('-password').sort({ createdAt: -1 });
+    const query = {};
+    if (req.query.role) query.role = req.query.role;
+    if (req.query.depot && req.query.depot !== 'All') query.depot = req.query.depot;
+
+    const users = await User.find(query).select('-password').sort({ createdAt: -1 });
     res.status(200).json({
       success: true,
       count: users.length,
       users,
       data: users,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Admin: Update user role
+// @route   PUT /api/auth/users/:id/role
+// @access  Private (Admin only)
+const updateUserRole = async (req, res, next) => {
+  try {
+    const { role } = req.body;
+    if (!VALID_ROLES.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid role '${role}'. Allowed roles: ${VALID_ROLES.join(', ')}`,
+      });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    user.role = role;
+    await user.save();
+
+    await logActivity({
+      user: req.user?.name || 'Admin',
+      action: 'Role Changed',
+      type: 'user',
+      details: `Role for ${user.email} changed to ${role} by ${req.user?.name || 'Admin'}`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `User role updated to ${role}`,
+      data: user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Admin: Update user depot assignment
+// @route   PUT /api/auth/users/:id/depot
+// @access  Private (Admin only)
+const updateUserDepot = async (req, res, next) => {
+  try {
+    const { depot } = req.body;
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    user.depot = depot || '';
+    await user.save();
+
+    await logActivity({
+      user: req.user?.name || 'Admin',
+      action: 'Depot Assigned',
+      type: 'user',
+      details: `Depot for ${user.email} updated to ${depot || 'None'} by ${req.user?.name || 'Admin'}`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `User depot updated to ${depot || 'None'}`,
+      data: user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Admin: Toggle or set user active status
+// @route   PATCH /api/auth/users/:id/status
+// @access  Private (Admin only)
+const updateUserStatus = async (req, res, next) => {
+  try {
+    const { isActive, status } = req.body;
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (isActive !== undefined) {
+      user.isActive = Boolean(isActive);
+      user.status = user.isActive ? 'Active' : 'Inactive';
+    } else if (status !== undefined) {
+      user.status = status;
+      user.isActive = status === 'Active' || status === 'Approved';
+    } else {
+      user.isActive = !user.isActive;
+      user.status = user.isActive ? 'Active' : 'Inactive';
+    }
+
+    await user.save();
+
+    await logActivity({
+      user: req.user?.name || 'Admin',
+      action: user.isActive ? 'User Activated' : 'User Deactivated',
+      type: 'user',
+      details: `User ${user.email} ${user.isActive ? 'activated' : 'deactivated'} by ${req.user?.name || 'Admin'}`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `User ${user.isActive ? 'activated' : 'deactivated'} successfully`,
+      data: user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Admin: Full user update (role, depot, status, name)
+// @route   PUT /api/auth/users/:id
+// @access  Private (Admin only)
+const updateUserAdmin = async (req, res, next) => {
+  try {
+    const { name, role, depot, isActive, status, phone } = req.body;
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (name) user.name = name;
+    if (phone) user.phone = phone;
+    if (role && VALID_ROLES.includes(role)) user.role = role;
+    if (depot !== undefined) user.depot = depot;
+    if (isActive !== undefined) {
+      user.isActive = Boolean(isActive);
+      user.status = user.isActive ? 'Active' : 'Inactive';
+    }
+    if (status !== undefined) {
+      user.status = status;
+      user.isActive = status === 'Active' || status === 'Approved';
+    }
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'User updated successfully',
+      data: user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Admin: Delete user
+// @route   DELETE /api/auth/users/:id
+// @access  Private (Admin only)
+const deleteUser = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Protect self-deletion
+    if (req.user && req.user._id.toString() === user._id.toString()) {
+      return res.status(400).json({ success: false, message: 'Cannot delete your own admin account' });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
+
+    await logActivity({
+      user: req.user?.name || 'Admin',
+      action: 'User Deleted',
+      type: 'user',
+      details: `User ${user.email} (${user.role}) was deleted by ${req.user?.name || 'Admin'}`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'User deleted successfully',
     });
   } catch (error) {
     next(error);
@@ -1175,6 +1362,12 @@ module.exports = {
   getAllUsers,
   updateProfile,
   changePassword,
+  updateUserRole,
+  updateUserDepot,
+  updateUserStatus,
+  updateUserAdmin,
+  deleteUser,
 };
+
 
 

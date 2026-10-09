@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 //control.exe keymgr.dll
 import { Routes, Route, Navigate } from "react-router-dom";
 import { GoogleOAuthProvider } from "@react-oauth/google";
@@ -12,27 +12,32 @@ import { SimulationProvider } from "./context/SimulationContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
+import LoadingScreen from "./components/LoadingScreen";
 import AppLayout from "./layouts/AppLayout";
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import CustomerPortal from "./pages/CustomerPortal";
-import Orders from "./pages/Orders";
-import OrderDetail from "./pages/OrderDetail";
-import PendingRequests from "./pages/PendingRequests";
-import FleetMap from "./pages/FleetMap";
-import Inventory from "./pages/Inventory";
-import Drivers from "./pages/Drivers";
-import Vehicles from "./pages/Vehicles";
-import Customers from "./pages/Customers";
-import CustomerRegistrations from "./pages/CustomerRegistrations";
-import Applications from "./pages/Applications";
-import Register from "./pages/Register";
-import Reports from "./pages/Reports";
-import Settings from "./pages/Settings";
-import DriverPortal from "./pages/DriverPortal";
-import ForgotPassword from "./pages/ForgotPassword";
-import AuditLogs from "./pages/AuditLogs";
-import NotFound from "./pages/NotFound";
+
+// Code-split routes for optimal performance and minimal initial bundle size
+const Login = lazy(() => import("./pages/Login"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const CustomerPortal = lazy(() => import("./pages/CustomerPortal"));
+const Orders = lazy(() => import("./pages/Orders"));
+const OrderDetail = lazy(() => import("./pages/OrderDetail"));
+const PendingRequests = lazy(() => import("./pages/PendingRequests"));
+const FleetMap = lazy(() => import("./pages/FleetMap"));
+const Inventory = lazy(() => import("./pages/Inventory"));
+const Drivers = lazy(() => import("./pages/Drivers"));
+const Vehicles = lazy(() => import("./pages/Vehicles"));
+const Customers = lazy(() => import("./pages/Customers"));
+const Applications = lazy(() => import("./pages/Applications"));
+const Register = lazy(() => import("./pages/Register"));
+const Reports = lazy(() => import("./pages/Reports"));
+const Settings = lazy(() => import("./pages/Settings"));
+const DriverPortal = lazy(() => import("./pages/DriverPortal"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const AuditLogs = lazy(() => import("./pages/AuditLogs"));
+const UserManagement = lazy(() => import("./pages/UserManagement"));
+const Pricing = lazy(() => import("./pages/Pricing"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+import { ROLES } from "./utils/permissions";
 
 function RootRedirect() {
   const { state } = useAuth();
@@ -63,137 +68,155 @@ export default function App() {
                   <InventoryProvider>
                     <OrdersProvider>
                       <SimulationProvider>
-                        <Routes>
-                          <Route path="/login" element={<Login />} />
-                          <Route path="/register" element={<Register />} />
-                          <Route path="/forgot-password" element={<ForgotPassword />} />
+                        <Suspense fallback={<LoadingScreen message="Loading page..." />}>
+                          <Routes>
+                            <Route path="/login" element={<Login />} />
+                            <Route path="/register" element={<Register />} />
+                            <Route path="/forgot-password" element={<ForgotPassword />} />
 
-                          {/* Authenticated Application Routes */}
+                            {/* Authenticated Application Routes */}
+                            <Route
+                              element={
+                                <ProtectedRoute>
+                                  <ErrorBoundary>
+                                    <AppLayout />
+                                  </ErrorBoundary>
+                                </ProtectedRoute>
+                              }
+                            >
+                          {/* Customer & Driver Accessible Routes */}
+                          <Route path="/customer-portal" element={<CustomerPortal />} />
+                          <Route path="/driver-portal" element={<DriverPortal />} />
+                          <Route path="/fleet-map" element={<FleetMap />} />
+                          <Route path="/settings" element={<Settings />} />
+
+                          {/* Enterprise RBAC Role-Scoped Routes */}
                           <Route
+                            path="/dashboard"
                             element={
-                              <ProtectedRoute>
-                                <ErrorBoundary>
-                                  <AppLayout />
-                                </ErrorBoundary>
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.DEPOT_MANAGER, ROLES.SUPPORT_EXECUTIVE, ROLES.AUDITOR]}>
+                                <Dashboard />
                               </ProtectedRoute>
                             }
-                          >
-                        {/* Customer & Driver Accessible Routes */}
-                        <Route path="/customer-portal" element={<CustomerPortal />} />
-                        <Route path="/driver-portal" element={<DriverPortal />} />
-                        <Route path="/fleet-map" element={<FleetMap />} />
-                        <Route path="/settings" element={<Settings />} />
+                          />
+                          <Route
+                            path="/users"
+                            element={
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN]}>
+                                <UserManagement />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/pricing"
+                            element={
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.DEPOT_MANAGER, ROLES.SUPPORT_EXECUTIVE, ROLES.AUDITOR, ROLES.CUSTOMER]}>
+                                <Pricing />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/pending-requests"
+                            element={
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.DEPOT_MANAGER]}>
+                                <PendingRequests />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/applications"
+                            element={
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.DEPOT_MANAGER, ROLES.SUPPORT_EXECUTIVE, ROLES.AUDITOR]}>
+                                <Applications />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/registrations"
+                            element={
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.DEPOT_MANAGER, ROLES.SUPPORT_EXECUTIVE, ROLES.AUDITOR]}>
+                                <Applications />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/application-dossier"
+                            element={
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.DEPOT_MANAGER, ROLES.SUPPORT_EXECUTIVE, ROLES.AUDITOR]}>
+                                <Applications />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/audit-logs"
+                            element={
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.AUDITOR]}>
+                                <AuditLogs />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/orders"
+                            element={
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.DEPOT_MANAGER, ROLES.SUPPORT_EXECUTIVE, ROLES.AUDITOR, ROLES.DRIVER, ROLES.CUSTOMER]}>
+                                <Orders />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/orders/:id"
+                            element={
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.DEPOT_MANAGER, ROLES.SUPPORT_EXECUTIVE, ROLES.AUDITOR, ROLES.DRIVER, ROLES.CUSTOMER]}>
+                                <OrderDetail />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/inventory"
+                            element={
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.DEPOT_MANAGER, ROLES.SUPPORT_EXECUTIVE, ROLES.AUDITOR]}>
+                                <Inventory />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/drivers"
+                            element={
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.DEPOT_MANAGER, ROLES.SUPPORT_EXECUTIVE, ROLES.AUDITOR, ROLES.DRIVER]}>
+                                <Drivers />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/vehicles"
+                            element={
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.DEPOT_MANAGER, ROLES.SUPPORT_EXECUTIVE, ROLES.AUDITOR, ROLES.DRIVER]}>
+                                <Vehicles />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/customers"
+                            element={
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.DEPOT_MANAGER, ROLES.SUPPORT_EXECUTIVE, ROLES.AUDITOR]}>
+                                <Customers />
+                              </ProtectedRoute>
+                            }
+                          />
+                          <Route
+                            path="/reports"
+                            element={
+                              <ProtectedRoute allowedRoles={[ROLES.ADMIN, ROLES.DEPOT_MANAGER, ROLES.AUDITOR, ROLES.SUPPORT_EXECUTIVE]}>
+                                <Reports />
+                              </ProtectedRoute>
+                            }
+                          />
+                        </Route>
 
-                        {/* Strict Admin / Dispatcher Only Routes */}
-                        <Route
-                          path="/dashboard"
-                          element={
-                            <ProtectedRoute adminOnly>
-                              <Dashboard />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/pending-requests"
-                          element={
-                            <ProtectedRoute adminOnly>
-                              <PendingRequests />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/applications"
-                          element={
-                            <ProtectedRoute adminOnly>
-                              <Applications />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/registrations"
-                          element={
-                            <ProtectedRoute adminOnly>
-                              <Applications />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/application-dossier"
-                          element={
-                            <ProtectedRoute adminOnly>
-                              <Applications />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/audit-logs"
-                          element={
-                            <ProtectedRoute adminOnly>
-                              <AuditLogs />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/orders"
-                          element={
-                            <ProtectedRoute adminOnly>
-                              <Orders />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/orders/:id"
-                          element={
-                            <ProtectedRoute adminOnly>
-                              <OrderDetail />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/inventory"
-                          element={
-                            <ProtectedRoute adminOnly>
-                              <Inventory />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/drivers"
-                          element={
-                            <ProtectedRoute adminOnly>
-                              <Drivers />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/vehicles"
-                          element={
-                            <ProtectedRoute adminOnly>
-                              <Vehicles />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/customers"
-                          element={
-                            <ProtectedRoute adminOnly>
-                              <Customers />
-                            </ProtectedRoute>
-                          }
-                        />
-                        <Route
-                          path="/reports"
-                          element={
-                            <ProtectedRoute adminOnly>
-                              <Reports />
-                            </ProtectedRoute>
-                          }
-                        />
-                      </Route>
-
-                      <Route path="/" element={<RootRedirect />} />
-                      <Route path="*" element={<NotFound />} />
-                    </Routes>
+                        <Route path="/" element={<RootRedirect />} />
+                        <Route path="*" element={<NotFound />} />
+                      </Routes>
+                    </Suspense>
                   </SimulationProvider>
                 </OrdersProvider>
               </InventoryProvider>

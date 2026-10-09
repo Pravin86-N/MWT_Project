@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Sun, Moon, Check, Trash2 } from "lucide-react";
+import { Sun, Moon, Check, Trash2, Volume2, VolumeX } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { useLanguage } from "../context/LanguageContext";
 import { useSettings } from "../context/SettingsContext";
 import { useOrders } from "../context/OrdersContext";
 import { LANGUAGES } from "../i18n/translations";
+import { isSoundEnabled, setSoundEnabled, playNewOrderSound } from "../utils/soundNotifications";
 
 export default function Settings() {
   const { state, updateProfile, changePassword } = useAuth();
@@ -15,6 +16,7 @@ export default function Settings() {
   const { resetToSeed } = useOrders();
 
   const [savedFlash, setSavedFlash] = useState(false);
+  const [soundActive, setSoundActive] = useState(isSoundEnabled());
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileName, setProfileName] = useState(state.user?.name || "");
   const [profilePhone, setProfilePhone] = useState(state.user?.phone || "");
@@ -61,6 +63,16 @@ export default function Settings() {
   };
   const onTogglePref = (key) => {
     togglePref(key);
+    flashSaved();
+  };
+
+  const onToggleSound = () => {
+    const nextVal = !soundActive;
+    setSoundActive(nextVal);
+    setSoundEnabled(nextVal);
+    if (nextVal) {
+      playNewOrderSound();
+    }
     flashSaved();
   };
 
@@ -146,7 +158,7 @@ export default function Settings() {
           {!isEditingProfile && (
             <button
               className="btn-ghost"
-              style={{ fontSize: "0.85rem", padding: "0.35rem 0.75rem" }}
+              style={{ fontSize: "13px", padding: "6px 14px" }}
               onClick={() => setIsEditingProfile(true)}
             >
               Edit Profile
@@ -155,7 +167,7 @@ export default function Settings() {
         </div>
 
         {profileError && (
-          <div style={{ color: "var(--red)", fontSize: "0.85rem", marginBottom: "0.75rem" }}>
+          <div style={{ color: "var(--red)", fontSize: "13.5px", marginBottom: "0.75rem" }}>
             {profileError}
           </div>
         )}
@@ -256,12 +268,12 @@ export default function Settings() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: isChangingPassword ? "1rem" : 0 }}>
           <div>
             <h3 style={{ margin: 0 }}>Security & Password</h3>
-            <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: "var(--text-dim)" }}>Update your MongoDB authenticated account password</p>
+            <p style={{ margin: "0.25rem 0 0", fontSize: "13.5px", color: "var(--text-dim)" }}>Update your MongoDB authenticated account password</p>
           </div>
           {!isChangingPassword && (
             <button
               className="btn-ghost"
-              style={{ fontSize: "0.85rem", padding: "0.35rem 0.75rem" }}
+              style={{ fontSize: "13px", padding: "6px 14px" }}
               onClick={() => setIsChangingPassword(true)}
             >
               Change Password
@@ -270,7 +282,7 @@ export default function Settings() {
         </div>
 
         {passwordError && (
-          <div style={{ color: "var(--red)", fontSize: "0.85rem", margin: "0.75rem 0" }}>
+          <div style={{ color: "var(--red)", fontSize: "13.5px", margin: "0.75rem 0" }}>
             {passwordError}
           </div>
         )}
@@ -373,8 +385,13 @@ export default function Settings() {
           </button>
         </div>
         <div className="settings-row">
-          <span>{t("language")}</span>
-          <select value={language} onChange={onChangeLanguage}>
+          <label htmlFor="settings-language-select">{t("language")}</label>
+          <select
+            id="settings-language-select"
+            value={language}
+            onChange={onChangeLanguage}
+            aria-label={t("language") || "Language"}
+          >
             {LANGUAGES.map((l) => (
               <option key={l.code} value={l.code}>
                 {l.label}
@@ -385,7 +402,41 @@ export default function Settings() {
       </section>
 
       <section className="panel settings-panel">
-        <h3>{t("notifications")}</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+          <h3 style={{ margin: 0 }}>{t("notifications")}</h3>
+          <button
+            type="button"
+            className="btn-ghost"
+            style={{ fontSize: "12px", padding: "4px 10px", display: "flex", alignItems: "center", gap: "6px" }}
+            onClick={() => playNewOrderSound()}
+            title="Preview operational notification sound"
+          >
+            <Volume2 size={14} style={{ color: "var(--fuel-diesel, #F59E0B)" }} /> Test Sound Chime
+          </button>
+        </div>
+
+        <label className="settings-row toggle-row" style={{ padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600 }}>
+              {soundActive ? (
+                <Volume2 size={16} style={{ color: "var(--fuel-cng, #22C55E)" }} />
+              ) : (
+                <VolumeX size={16} style={{ color: "var(--text-secondary, #94A3B8)" }} />
+              )}
+              <span>Operational Sound Notifications</span>
+            </div>
+            <div className="cell-dim" style={{ fontSize: "12px", marginTop: "2px" }}>
+              Web Audio alerts for New Order, Low Inventory, SOS Emergency, and Delivery Completion
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            checked={soundActive}
+            onChange={onToggleSound}
+            aria-label="Toggle operational sound notifications"
+          />
+        </label>
+
         {[
           { key: "notifyOrderUpdates", label: t("notifyOrderUpdates") },
           { key: "notifyLowStock", label: t("notifyLowStock") },

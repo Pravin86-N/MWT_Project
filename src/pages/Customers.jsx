@@ -36,6 +36,11 @@ import { useLanguage } from "../context/LanguageContext";
 import { customerApi } from "../services/api";
 import NewOrderModal from "../components/NewOrderModal";
 import { recordRecentAccess } from "../services/recentAccess";
+import Pagination from "../components/Pagination";
+import EmptyState from "../components/EmptyState";
+import { SkeletonCard } from "../components/Skeleton";
+import CountUp from "../components/CountUp";
+import FuelBadge from "../components/FuelBadge";
 
 export default function Customers() {
   const { t } = useLanguage();
@@ -50,10 +55,16 @@ export default function Customers() {
   const [selectedIndustry, setSelectedIndustry] = useState("ALL");
   const [selectedStatus, setSelectedStatus] = useState("ALL");
   const [selectedPriority, setSelectedPriority] = useState("ALL");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [activeCustomerDrawer, setActiveCustomerDrawer] = useState(null);
   const [drawerTab, setDrawerTab] = useState("overview");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, selectedIndustry, selectedStatus, selectedPriority]);
 
   // Fetch real customer records from MongoDB via customerApi
   const fetchCustomers = () => {
@@ -216,6 +227,10 @@ export default function Customers() {
     });
   }, [enrichedCustomers, search, selectedIndustry, selectedStatus, selectedPriority]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredCustomers.length / pageSize));
+  const clampedPage = Math.min(page, totalPages);
+  const paginatedCustomers = filteredCustomers.slice((clampedPage - 1) * pageSize, clampedPage * pageSize);
+
   const handleActionToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(""), 3500);
@@ -236,14 +251,14 @@ export default function Customers() {
             className="btn-ghost"
             onClick={fetchCustomers}
             title="Refresh Customer Data"
-            style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}
+            style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "14px" }}
           >
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
           <button
             className="refill-action-btn btn-refill-normal"
             onClick={() => setShowCreateModal(true)}
-            style={{ padding: "10px 18px", borderRadius: "10px", fontSize: "13px", fontWeight: "700" }}
+            style={{ padding: "10px 18px", borderRadius: "10px", fontSize: "14px", fontWeight: "700" }}
           >
             <PlusCircle size={16} /> Create New Fuel Order
           </button>
@@ -280,7 +295,7 @@ export default function Customers() {
               <Building2 size={18} />
             </div>
           </div>
-          <div className="crm-kpi-val">{totalCount}</div>
+          <div className="crm-kpi-val"><CountUp value={totalCount} /></div>
           <div className="crm-kpi-sub">
             <UserCheck size={12} style={{ color: "var(--green)" }} /> {activeCount} Active Enterprise Accounts
           </div>
@@ -293,7 +308,7 @@ export default function Customers() {
               <ShieldCheck size={18} />
             </div>
           </div>
-          <div className="crm-kpi-val" style={{ color: "var(--green)" }}>{activeCount}</div>
+          <div className="crm-kpi-val" style={{ color: "var(--green)" }}><CountUp value={activeCount} /></div>
           <div className="crm-kpi-sub">
             <span>{totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 100}% Operational Health</span>
           </div>
@@ -306,7 +321,7 @@ export default function Customers() {
               <Award size={18} />
             </div>
           </div>
-          <div className="crm-kpi-val" style={{ color: "#F72585" }}>{premiumCount}</div>
+          <div className="crm-kpi-val" style={{ color: "#F72585" }}><CountUp value={premiumCount} /></div>
           <div className="crm-kpi-sub">
             <span>High-volume Key Accounts</span>
           </div>
@@ -319,7 +334,7 @@ export default function Customers() {
               <DollarSign size={18} />
             </div>
           </div>
-          <div className="crm-kpi-val">₹{(totalRevenue / 100000).toFixed(1)}L</div>
+          <div className="crm-kpi-val">₹<CountUp value={Number((totalRevenue / 100000).toFixed(1))} decimals={1} />L</div>
           <div className="crm-kpi-sub">
             <TrendingUp size={12} style={{ color: "var(--green)" }} /> Lifetime Delivered Litres
           </div>
@@ -332,7 +347,7 @@ export default function Customers() {
               <Clock size={18} />
             </div>
           </div>
-          <div className="crm-kpi-val" style={{ color: "var(--amber)" }}>{totalPendingOrders}</div>
+          <div className="crm-kpi-val" style={{ color: "var(--amber)" }}><CountUp value={totalPendingOrders} /></div>
           <div className="crm-kpi-sub">
             <span>In Transit & Pending Dispatch</span>
           </div>
@@ -360,6 +375,7 @@ export default function Customers() {
             type="text"
             className="crm-search-input"
             placeholder="Search by customer name, location, or industry..."
+            aria-label="Search customers by name, location, or industry"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -371,6 +387,7 @@ export default function Customers() {
           {/* Industry Filter */}
           <select
             className="crm-filter-select"
+            aria-label="Filter customers by industry"
             value={selectedIndustry}
             onChange={(e) => setSelectedIndustry(e.target.value)}
           >
@@ -390,6 +407,7 @@ export default function Customers() {
           {/* Status Filter */}
           <select
             className="crm-filter-select"
+            aria-label="Filter customers by status"
             value={selectedStatus}
             onChange={(e) => setSelectedStatus(e.target.value)}
           >
@@ -403,6 +421,7 @@ export default function Customers() {
           {/* Priority Tier Filter */}
           <select
             className="crm-filter-select"
+            aria-label="Filter customers by priority tier"
             value={selectedPriority}
             onChange={(e) => setSelectedPriority(e.target.value)}
           >
@@ -420,7 +439,7 @@ export default function Customers() {
                 setSelectedStatus("ALL");
                 setSelectedPriority("ALL");
               }}
-              style={{ background: "none", border: "none", color: "var(--orange)", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}
+              style={{ background: "none", border: "none", color: "var(--orange)", fontSize: "14px", fontWeight: "700", cursor: "pointer" }}
             >
               Reset Filters
             </button>
@@ -430,17 +449,29 @@ export default function Customers() {
 
       {/* Loading State */}
       {loading ? (
-        <div className="loading" style={{ padding: "50px", textAlign: "center", color: "var(--orange)" }}>
-          Loading real customer records from MongoDB...
+        <div className="crm-cards-grid">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={`skel-cust-${i}`} height="220px" />
+          ))}
         </div>
       ) : filteredCustomers.length === 0 ? (
-        <div className="loading" style={{ padding: "50px", textAlign: "center" }}>
-          No customer accounts match selected criteria.
-        </div>
+        <EmptyState
+          type="customers"
+          title="No approved customers found."
+          message="No active or approved enterprise accounts match your search and filter criteria."
+          actionLabel={search || selectedIndustry !== "ALL" || selectedStatus !== "ALL" || selectedPriority !== "ALL" ? "Reset Filters" : undefined}
+          onAction={() => {
+            setSearch("");
+            setSelectedIndustry("ALL");
+            setSelectedStatus("ALL");
+            setSelectedPriority("ALL");
+          }}
+        />
       ) : (
-        /* Customer Cards Grid */
-        <div className="crm-cards-grid">
-          {filteredCustomers.map((c) => {
+        <>
+          {/* Customer Cards Grid */}
+          <div className="crm-cards-grid">
+            {paginatedCustomers.map((c) => {
             const creditLimit = c.credit?.limit || 500000;
             const creditUsed = c.credit?.used || 0;
             const creditPercent = Math.min(100, Math.round((creditUsed / (creditLimit || 1)) * 100));
@@ -486,7 +517,7 @@ export default function Customers() {
 
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
                     <span className={`crm-priority-badge ${(c.priority || "standard").toLowerCase()}`}>{c.priority || "Standard"}</span>
-                    <div style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "11px", fontWeight: "700", color: c.status === "Active" ? "var(--green)" : "var(--text-muted)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "13px", fontWeight: "700", color: c.status === "Active" ? "var(--green)" : "var(--text-muted)" }}>
                       <span className="live-dot-pulse" style={{ width: "7px", height: "7px", backgroundColor: c.status === "Active" ? "var(--green-neon)" : "var(--text-muted)" }}></span>
                       {c.status || "Active"}
                     </div>
@@ -577,7 +608,18 @@ export default function Customers() {
             );
           })}
         </div>
-      )}
+
+        <Pagination
+          currentPage={clampedPage}
+          totalPages={totalPages}
+          totalRecords={filteredCustomers.length}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          pageSizeOptions={[10, 20, 50]}
+        />
+      </>
+    )}
 
       {/* Slide-Over Customer Profile Drawer */}
       {activeCustomerDrawer && (
@@ -602,10 +644,10 @@ export default function Customers() {
                   {(activeCustomerDrawer.name || "CU").substring(0, 2).toUpperCase()}
                 </div>
                 <div>
-                  <h2 style={{ fontSize: "20px", fontWeight: "800", margin: "0 0 2px 0", color: "var(--text)" }}>
+                  <h2 style={{ fontSize: "22px", fontWeight: "800", margin: "0 0 2px 0", color: "var(--text)" }}>
                     {activeCustomerDrawer.name}
                   </h2>
-                  <div style={{ fontSize: "12px", color: "var(--text-dim)", display: "flex", gap: "8px", alignItems: "center" }}>
+                  <div style={{ fontSize: "14px", color: "var(--text-dim)", display: "flex", gap: "8px", alignItems: "center" }}>
                     <MapPin size={12} /> {activeCustomerDrawer.city} • <Briefcase size={12} /> {activeCustomerDrawer.industry}
                   </div>
                 </div>
@@ -648,55 +690,55 @@ export default function Customers() {
               {drawerTab === "overview" && (
                 <>
                   <div className="crm-section-card">
-                    <h4 style={{ margin: 0, fontSize: "14px", color: "var(--orange)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <h4 style={{ margin: 0, fontSize: "15px", color: "var(--orange)", display: "flex", alignItems: "center", gap: "6px" }}>
                       <UserCheck size={16} /> Key Account Contact
                     </h4>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "13px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "14px" }}>
                       <div>
-                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Primary Contact</span>
+                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "13px" }}>Primary Contact</span>
                         <strong>{activeCustomerDrawer.contact?.name || activeCustomerDrawer.authorizedPerson || "Authorized Person"}</strong>
                       </div>
                       <div>
-                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Customer Since</span>
+                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "13px" }}>Customer Since</span>
                         <strong>{activeCustomerDrawer.contact?.since || "2026-01-01"}</strong>
                       </div>
                       <div>
-                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Phone Number</span>
+                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "13px" }}>Phone Number</span>
                         <strong>{activeCustomerDrawer.contact?.phone || activeCustomerDrawer.phone || "—"}</strong>
                       </div>
                       <div>
-                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Email Address</span>
+                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "13px" }}>Email Address</span>
                         <strong>{activeCustomerDrawer.contact?.email || activeCustomerDrawer.email || "—"}</strong>
                       </div>
                     </div>
                   </div>
 
                   <div className="crm-section-card">
-                    <h4 style={{ margin: 0, fontSize: "14px", color: "var(--text)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <h4 style={{ margin: 0, fontSize: "15px", color: "var(--text)", display: "flex", alignItems: "center", gap: "6px" }}>
                       <Droplets size={16} style={{ color: "var(--blue)" }} /> Fuel Consumption & Logistics Summary
                     </h4>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "13px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "14px" }}>
                       <div>
-                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Total Volume Delivered</span>
+                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "13px" }}>Total Volume Delivered</span>
                         <strong style={{ fontSize: "16px", color: "var(--orange)" }}>
                           {(activeCustomerDrawer.litres || 0).toLocaleString()} Litres
                         </strong>
                       </div>
                       <div>
-                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Lifetime Account Value</span>
+                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "13px" }}>Lifetime Account Value</span>
                         <strong style={{ fontSize: "16px", color: "var(--green)" }}>
                           ₹{Math.round(activeCustomerDrawer.revenue || 0).toLocaleString("en-IN")}
                         </strong>
                       </div>
                       <div>
-                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Completed Deliveries</span>
-                        <strong style={{ fontSize: "14px", color: "var(--green)" }}>
+                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "13px" }}>Completed Deliveries</span>
+                        <strong style={{ fontSize: "15px", color: "var(--green)" }}>
                           {activeCustomerDrawer.deliveriesCount || 0} Runs
                         </strong>
                       </div>
                       <div>
-                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Pending Dispatch Requests</span>
-                        <strong style={{ fontSize: "14px", color: (activeCustomerDrawer.pendingRequestsCount || 0) > 0 ? "var(--amber)" : "var(--text-dim)" }}>
+                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "13px" }}>Pending Dispatch Requests</span>
+                        <strong style={{ fontSize: "15px", color: (activeCustomerDrawer.pendingRequestsCount || 0) > 0 ? "var(--amber)" : "var(--text-dim)" }}>
                           {activeCustomerDrawer.pendingRequestsCount || 0} Orders
                         </strong>
                       </div>
@@ -721,7 +763,7 @@ export default function Customers() {
               {drawerTab === "orders" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                   {(!activeCustomerDrawer.customerOrders || activeCustomerDrawer.customerOrders.length === 0) ? (
-                    <div style={{ padding: "30px", textAlign: "center", color: "var(--text-dim)" }}>
+                    <div style={{ padding: "30px", textAlign: "center", color: "var(--text-dim)", fontSize: "14px" }}>
                       No orders placed by this customer yet.
                     </div>
                   ) : (
@@ -739,14 +781,14 @@ export default function Customers() {
                         }}
                       >
                         <div>
-                          <div style={{ fontWeight: "700", fontSize: "13px", color: "var(--text)" }}>
+                          <div style={{ fontWeight: "700", fontSize: "14px", color: "var(--text)" }}>
                             Order #{o.orderNumber}
                           </div>
-                          <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>
+                          <div style={{ fontSize: "13px", color: "var(--text-dim)", marginTop: "2px" }}>
                             {o.fuelType || o.fuelCode} • {(o.quantity || o.qty)} L • {o.deliveryAddress || o.site || o.city}
                           </div>
                           {o.driver && o.driver !== "Unassigned" && (
-                            <div style={{ fontSize: "11px", color: "var(--blue)", marginTop: "2px" }}>
+                            <div style={{ fontSize: "13px", color: "var(--blue)", marginTop: "2px" }}>
                               <Truck size={12} style={{ display: "inline", verticalAlign: "middle", marginRight: "4px" }} />
                               Driver: {o.driver} ({o.vehicle || "Tanker"})
                             </div>
@@ -761,11 +803,11 @@ export default function Customers() {
                                 ? "critical"
                                 : "warning"
                             }`}
-                            style={{ fontSize: "10px" }}
+                            style={{ fontSize: "12px" }}
                           >
                             {o.status}
                           </span>
-                          <div style={{ fontSize: "11px", fontWeight: "700", marginTop: "4px", color: "var(--text)" }}>
+                          <div style={{ fontSize: "13px", fontWeight: "700", marginTop: "4px", color: "var(--text)" }}>
                             ₹{Math.round(o.total || 0).toLocaleString("en-IN")}
                           </div>
                         </div>
@@ -778,41 +820,41 @@ export default function Customers() {
               {drawerTab === "registration" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   <div className="crm-section-card">
-                    <h4 style={{ margin: 0, fontSize: "14px", color: "var(--blue)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <h4 style={{ margin: 0, fontSize: "15px", color: "var(--blue)", display: "flex", alignItems: "center", gap: "6px" }}>
                       <FileCheck size={16} /> Customer Registration & KYC Verification
                     </h4>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "13px", marginTop: "8px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "14px", marginTop: "8px" }}>
                       <div>
-                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Registration ID</span>
+                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "13px" }}>Registration ID</span>
                         <strong className="mono">{activeCustomerDrawer.regId || "REG-ENTERPRISE"}</strong>
                       </div>
                       <div>
-                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Approval Status</span>
-                        <span className="pill status-approved" style={{ fontSize: "11px" }}>
+                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "13px" }}>Approval Status</span>
+                        <span className="pill status-approved" style={{ fontSize: "12px" }}>
                           {activeCustomerDrawer.registrationStatus || activeCustomerDrawer.status || "Verified"}
                         </span>
                       </div>
                       <div>
-                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>GST Number</span>
+                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "13px" }}>GST Number</span>
                         <strong className="mono">{activeCustomerDrawer.gstNumber || "—"}</strong>
                       </div>
                       <div>
-                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>PAN Number</span>
+                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "13px" }}>PAN Number</span>
                         <strong className="mono">{activeCustomerDrawer.panNumber || "—"}</strong>
                       </div>
                       <div>
-                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Business Classification</span>
+                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "13px" }}>Business Classification</span>
                         <strong>{activeCustomerDrawer.businessType || activeCustomerDrawer.industry}</strong>
                       </div>
                       <div>
-                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "11px" }}>Registered Address</span>
+                        <span style={{ color: "var(--text-muted)", display: "block", fontSize: "13px" }}>Registered Address</span>
                         <strong>{activeCustomerDrawer.address || `${activeCustomerDrawer.city}, ${activeCustomerDrawer.state || "TN"}`}</strong>
                       </div>
                     </div>
                   </div>
 
                   <div className="crm-section-card">
-                    <h4 style={{ margin: 0, fontSize: "13px", color: "var(--text)", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <h4 style={{ margin: 0, fontSize: "15px", color: "var(--text)", display: "flex", alignItems: "center", gap: "6px" }}>
                       <FileText size={15} /> Uploaded Compliance Documents
                     </h4>
                     <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
@@ -828,15 +870,15 @@ export default function Customers() {
                               padding: "8px 12px",
                               borderRadius: "8px",
                               border: "1px solid var(--line)",
-                              fontSize: "12px",
+                              fontSize: "13px",
                             }}
                           >
                             <span>{doc.type || "Document"}: <strong>{doc.fileName || doc.originalName || "Uploaded_Doc.pdf"}</strong></span>
-                            <span style={{ color: "var(--green)", fontSize: "11px", fontWeight: "700" }}>✓ Verified</span>
+                            <span style={{ color: "var(--green)", fontSize: "12px", fontWeight: "700" }}>✓ Verified</span>
                           </div>
                         ))
                       ) : (
-                        <div style={{ fontSize: "12px", color: "var(--text-dim)", padding: "8px" }}>
+                        <div style={{ fontSize: "13px", color: "var(--text-dim)", padding: "8px" }}>
                           Standard GST & PAN documentation on file.
                         </div>
                       )}
@@ -847,10 +889,10 @@ export default function Customers() {
 
               {drawerTab === "credit" && (
                 <div className="crm-section-card">
-                  <h4 style={{ margin: 0, fontSize: "14px", color: "var(--amber)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <h4 style={{ margin: 0, fontSize: "15px", color: "var(--amber)", display: "flex", alignItems: "center", gap: "6px" }}>
                     <CreditCard size={16} /> Credit Terms & Limits
                   </h4>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px", marginTop: "8px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "14px", marginTop: "8px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span>Payment Terms:</span>
                       <strong>{activeCustomerDrawer.credit?.terms || "NET 30"}</strong>

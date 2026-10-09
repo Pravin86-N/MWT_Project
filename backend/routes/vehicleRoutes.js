@@ -10,33 +10,34 @@ const {
   updateVehicle,
   deleteVehicle,
 } = require('../controllers/vehicleController');
+const { protect, authorize, READ_STAFF } = require('../middleware/authMiddleware');
 
-// GET all vehicles & POST create vehicle
+// GET all vehicles (Staff & Drivers) & POST create vehicle (Depot Manager ONLY - Admin gets 403)
 router
   .route('/')
-  .get(getVehicles)
-  .post(createVehicle);
+  .get(protect, authorize(READ_STAFF, 'Driver'), getVehicles)
+  .post(protect, authorize('Depot Manager'), createVehicle);
 
-// UPDATE vehicle location (latitude, longitude, speed, fuelLevel)
+// UPDATE vehicle location (latitude, longitude, speed, fuelLevel) - Drivers & Depot Manager
 router
   .route('/:id/location')
-  .patch(updateVehicleLocation)
-  .put(updateVehicleLocation);
+  .patch(protect, authorize('Driver', 'Depot Manager'), updateVehicleLocation)
+  .put(protect, authorize('Driver', 'Depot Manager'), updateVehicleLocation);
 
-// UPDATE vehicle status (Available, Assigned, In Transit, Delivered)
+// UPDATE vehicle status (Available, Assigned, In Transit, Delivered) - Depot Manager & Drivers
 router
   .route('/:id/status')
-  .patch(updateVehicleStatus)
-  .put(updateVehicleStatus);
+  .patch(protect, authorize('Depot Manager', 'Driver'), updateVehicleStatus)
+  .put(protect, authorize('Depot Manager', 'Driver'), updateVehicleStatus);
 
-// Live vehicle tracking formatted for Google Maps
-router.get('/:id/tracking', getVehicleTracking);
+// Live vehicle tracking formatted for Google Maps (Authenticated)
+router.get('/:id/tracking', protect, getVehicleTracking);
 
-// GET vehicle by ID, PUT update, DELETE
+// GET vehicle by ID, PUT update (Depot Manager ONLY), DELETE (Admin ONLY)
 router
   .route('/:id')
-  .get(getVehicleById)
-  .put(updateVehicle)
-  .delete(deleteVehicle);
+  .get(protect, authorize(READ_STAFF, 'Driver'), getVehicleById)
+  .put(protect, authorize('Depot Manager'), updateVehicle)
+  .delete(protect, authorize('Admin'), deleteVehicle);
 
 module.exports = router;

@@ -23,18 +23,25 @@ import {
   Sparkles,
   TrendingUp,
   DollarSign,
+  Lock,
 } from "lucide-react";
 import { computeTotal } from "../data/seed";
 import { useOrders } from "../context/OrdersContext";
 import { useInventory } from "../context/InventoryContext";
 import { useLanguage } from "../context/LanguageContext";
 import { useNotifications } from "../context/NotificationContext";
+import { useAuth } from "../context/AuthContext";
+import { ROLES, can } from "../utils/permissions";
 
 export default function PendingRequests() {
   const { t } = useLanguage();
   const { orders, updateOrder } = useOrders();
   const { hasSufficientStock, tanks } = useInventory();
   const { addNotification } = useNotifications();
+  const { state: authState } = useAuth();
+  const currentUser = authState?.user;
+  const userRole = currentUser?.role || "";
+  const canApprove = can(userRole, "orders.approve");
 
   // Local UI state
   const [activeTab, setActiveTab] = useState("Pending"); // "All", "High Priority", "Pending", "Approved", "Rejected"
@@ -192,28 +199,63 @@ export default function PendingRequests() {
       {/* Header Banner */}
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <h1 className="fleet-title-saas" style={{ fontSize: "24px", margin: 0 }}>
-            Depot Manager Approval Center
+          <h1 className="fleet-title-saas" style={{ fontSize: "28px", margin: 0 }}>
+            {userRole === ROLES.ADMIN ? "Platform Fuel Orders Oversight" : "Depot Manager Approval Center"}
           </h1>
-          <p className="fleet-subtitle-saas" style={{ fontSize: "13px", marginTop: "3px" }}>
-            Enterprise Bulk Fuel Order Authorization, Credit Verification & Depot Tank Stock Reservation Engine
+          <p className="fleet-subtitle-saas" style={{ fontSize: "14.5px", marginTop: "3px" }}>
+            {userRole === ROLES.ADMIN
+              ? "Platform Governance Mode: Multi-Depot Order Authorization, Corporate Credit Checks & Override Controls"
+              : `Assigned Depot Operations (${currentUser?.depot || "DEP-CHN-01"}): Order Authorization, Credit Verification & Vault Stock Reservation`}
           </p>
         </div>
-        <span
-          className="pill"
-          style={{
-            "--pill-color": "var(--orange)",
-            fontSize: "12px",
-            padding: "6px 14px",
-            background: "rgba(255, 94, 0, 0.15)",
-            color: "var(--orange)",
-            border: "1px solid rgba(255, 94, 0, 0.3)",
-            fontWeight: "800",
-          }}
-        >
-          <Clock size={14} style={{ verticalAlign: "middle", marginRight: "6px" }} />
-          {pendingRequestsList.length} PENDING APPROVAL
-        </span>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          {userRole === ROLES.ADMIN ? (
+            <span
+              className="pill"
+              style={{
+                "--pill-color": "var(--blue)",
+                fontSize: "13px",
+                padding: "6px 12px",
+                background: "rgba(59, 130, 246, 0.15)",
+                color: "var(--blue)",
+                border: "1px solid rgba(59, 130, 246, 0.3)",
+                fontWeight: "700",
+              }}
+            >
+              All Depots Jurisdiction
+            </span>
+          ) : (
+            <span
+              className="pill"
+              style={{
+                "--pill-color": "var(--orange)",
+                fontSize: "13px",
+                padding: "6px 12px",
+                background: "rgba(255, 94, 0, 0.15)",
+                color: "var(--orange)",
+                border: "1px solid rgba(255, 94, 0, 0.3)",
+                fontWeight: "700",
+              }}
+            >
+              Depot: {currentUser?.depot || "DEP-CHN-01"}
+            </span>
+          )}
+          <span
+            className="pill"
+            style={{
+              "--pill-color": "var(--orange)",
+              fontSize: "13px",
+              padding: "6px 14px",
+              background: "rgba(255, 94, 0, 0.15)",
+              color: "var(--orange)",
+              border: "1px solid rgba(255, 94, 0, 0.3)",
+              fontWeight: "800",
+            }}
+          >
+            <Clock size={14} style={{ verticalAlign: "middle", marginRight: "6px" }} />
+            {pendingRequestsList.length} PENDING APPROVAL
+          </span>
+        </div>
       </header>
 
       {/* Notifications / Alerts Banners */}
@@ -356,11 +398,12 @@ export default function PendingRequests() {
             <input
               type="text"
               placeholder="Search request #, customer, city..."
+              aria-label="Search requests by number, customer, or city"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
             {searchTerm && (
-              <button className="clear-btn" onClick={() => setSearchTerm("")}>
+              <button className="clear-btn" onClick={() => setSearchTerm("")} aria-label="Clear search input">
                 <X size={14} />
               </button>
             )}
@@ -369,7 +412,11 @@ export default function PendingRequests() {
           {/* Sort Dropdown */}
           <div className="sort-box">
             <ArrowUpDown size={14} style={{ color: "var(--orange)" }} />
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              aria-label="Sort pending requests by criteria"
+            >
               <option value="date">Sort: Date (Newest)</option>
               <option value="quantity">Sort: Quantity (High to Low)</option>
               <option value="priority">Sort: Priority First</option>
@@ -471,22 +518,28 @@ export default function PendingRequests() {
                       </button>
 
                       {isPending ? (
-                        <>
-                          <button
-                            className="btn-approve-modern"
-                            onClick={() => handleApprove(req)}
-                          >
-                            <Check size={16} /> Approve
-                          </button>
-                          <button
-                            className="btn-reject-modern"
-                            onClick={() => handleOpenRejectModal(req)}
-                          >
-                            <X size={16} /> Reject
-                          </button>
-                        </>
+                        canApprove ? (
+                          <>
+                            <button
+                              className="btn-approve-modern"
+                              onClick={() => handleApprove(req)}
+                            >
+                              <Check size={16} /> Approve
+                            </button>
+                            <button
+                              className="btn-reject-modern"
+                              onClick={() => handleOpenRejectModal(req)}
+                            >
+                              <X size={16} /> Reject
+                            </button>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: "13px", color: "var(--text-dim)", alignSelf: "center", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                            <Lock size={13} /> View Only
+                          </div>
+                        )
                       ) : (
-                        <div style={{ fontSize: "12px", color: "var(--text-dim)", alignSelf: "center" }}>
+                        <div style={{ fontSize: "13px", color: "var(--text-dim)", alignSelf: "center" }}>
                           {isApproved && <span style={{ color: "var(--green-neon)" }}>Processed at {req.approvedAt || "Today"}</span>}
                           {isRejected && <span style={{ color: "var(--red)" }}>Reason: {req.rejectionReason}</span>}
                         </div>
@@ -514,13 +567,13 @@ export default function PendingRequests() {
                             const isEnough = available >= req.qty;
                             return (
                               <div>
-                                <div style={{ fontSize: "13px", fontWeight: "700" }}>
+                                <div style={{ fontSize: "14px", fontWeight: "700" }}>
                                   Unreserved Tank Volume:{" "}
                                   <span style={{ color: isEnough ? "var(--green-neon)" : "var(--red)" }}>
                                     {available.toLocaleString()} L
                                   </span>
                                 </div>
-                                <div style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "3px" }}>
+                                <div style={{ fontSize: "13px", color: "var(--text-dim)", marginTop: "3px" }}>
                                   Required: {req.qty.toLocaleString()} L • Status:{" "}
                                   {isEnough ? (
                                     <strong style={{ color: "var(--green-neon)" }}>✓ Stock Available for Reservation</strong>
@@ -541,8 +594,8 @@ export default function PendingRequests() {
                           <span>Corporate Credit Account Terms</span>
                         </div>
                         <div className="drawer-content">
-                          <div style={{ fontSize: "13px", fontWeight: "700" }}>Net-30 Corporate Billing Account</div>
-                          <div style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "3px" }}>
+                          <div style={{ fontSize: "14px", fontWeight: "700" }}>Net-30 Corporate Billing Account</div>
+                          <div style={{ fontSize: "13px", color: "var(--text-dim)", marginTop: "3px" }}>
                             Credit Limit: ₹5,00,000 • Used: ₹1,46,200 • Available:{" "}
                             <strong style={{ color: "var(--green-neon)" }}>₹3,53,800 (Approved)</strong>
                           </div>
@@ -556,8 +609,8 @@ export default function PendingRequests() {
                           <span>Delivery Address & Slot</span>
                         </div>
                         <div className="drawer-content">
-                          <div style={{ fontSize: "13px", fontWeight: "700" }}>{req.site}, {req.city}</div>
-                          <div style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "3px" }}>
+                          <div style={{ fontSize: "14px", fontWeight: "700" }}>{req.site}, {req.city}</div>
+                          <div style={{ fontSize: "13px", color: "var(--text-dim)", marginTop: "3px" }}>
                             Requested Slot: {req.slot || "Today 09:00 - 12:00"} • Dedicated GPS Telemetry Route
                           </div>
                         </div>
@@ -580,7 +633,7 @@ export default function PendingRequests() {
                 <AlertTriangle size={20} style={{ color: "var(--red)" }} />
                 <h3 style={{ margin: "0", color: "var(--red)" }}>Reject Fuel Request</h3>
               </div>
-              <button type="button" className="icon-btn" onClick={() => setSelectedRejectRequest(null)}>
+              <button type="button" className="icon-btn" onClick={() => setSelectedRejectRequest(null)} aria-label="Close rejection dialog">
                 <X size={18} />
               </button>
             </div>
@@ -591,7 +644,11 @@ export default function PendingRequests() {
 
             <label className="field" style={{ marginTop: "14px" }}>
               <span>Select Rejection Reason</span>
-              <select value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}>
+              <select
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                aria-label="Select Rejection Reason"
+              >
                 <option value="Credit Limit Exceeded">Credit Limit Exceeded</option>
                 <option value="Depot Stock Unavailable">Depot Stock Unavailable</option>
                 <option value="Unserviceable Delivery Location">Unserviceable Delivery Location</option>
@@ -613,7 +670,7 @@ export default function PendingRequests() {
               </label>
             )}
 
-            <div style={{ background: "rgba(255, 0, 85, 0.1)", border: "1px solid rgba(255, 0, 85, 0.3)", padding: "12px", borderRadius: "10px", fontSize: "12px", color: "#FFA1B8" }}>
+            <div style={{ background: "rgba(255, 0, 85, 0.1)", border: "1px solid rgba(255, 0, 85, 0.3)", padding: "12px", borderRadius: "10px", fontSize: "13px", color: "#FFA1B8" }}>
               <strong>Customer Notification Note:</strong> The selected rejection reason will be saved on the customer's portal timeline and sent as a real-time notification alert.
             </div>
 

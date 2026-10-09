@@ -37,6 +37,11 @@ const driverSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    depot: {
+      type: String,
+      default: 'DEP-CHN-01',
+      trim: true,
+    },
   },
   {
     timestamps: true,

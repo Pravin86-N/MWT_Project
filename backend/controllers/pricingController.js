@@ -50,7 +50,8 @@ const getFuelPrices = async (req, res, next) => {
 const updateFuelPrice = async (req, res, next) => {
   try {
     const code = req.params.code.toUpperCase();
-    const { price, name, color, taxRate, deliveryCharge } = req.body;
+    const rawPrice = req.body.price !== undefined ? req.body.price : req.body.basePrice;
+    const { name, color, taxRate, deliveryCharge } = req.body;
 
     let fuel = await FuelPricing.findOne({ code });
 
@@ -58,12 +59,12 @@ const updateFuelPrice = async (req, res, next) => {
       const defaultItem = DEFAULT_PRICES.find((p) => p.code === code) || {
         code,
         name: code,
-        price: Number(price),
+        price: rawPrice !== undefined ? Number(rawPrice) : 90,
         color: '#f59e0b',
       };
-      fuel = new FuelPricing({ ...defaultItem, price: Number(price) });
+      fuel = new FuelPricing({ ...defaultItem, price: rawPrice !== undefined ? Number(rawPrice) : 90 });
     } else {
-      if (price !== undefined) fuel.price = Number(price);
+      if (rawPrice !== undefined) fuel.price = Number(rawPrice);
       if (name !== undefined) fuel.name = name;
       if (color !== undefined) fuel.color = color;
       if (taxRate !== undefined) fuel.taxRate = Number(taxRate);

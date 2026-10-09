@@ -14,6 +14,9 @@ import {
   Sun,
   Moon,
   KeyRound,
+  ShieldCheck,
+  Radio,
+  Sparkles,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { authApi } from "../services/api";
@@ -40,6 +43,18 @@ export default function ForgotPassword() {
   const [successMsg, setSuccessMsg] = useState("");
   const [otpPreview, setOtpPreview] = useState("");
   const [otpTimer, setOtpTimer] = useState(0); // 300s = 5 mins
+
+  // 3D Perspective Tilt State (Riotters Codefus Interactive Experience)
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const handleMouseMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width - 0.5) * 10;
+    const y = ((e.clientY - rect.top) / rect.height - 0.5) * -10;
+    setTilt({ x: y, y: x });
+  };
+  const handleMouseLeave = () => {
+    setTilt({ x: 0, y: 0 });
+  };
 
   // Detect token from URL query params (/forgot-password?token=...&email=...)
   useEffect(() => {
@@ -176,69 +191,112 @@ export default function ForgotPassword() {
       </button>
 
       <div className="saas-auth-container">
-        {/* Left Column Graphic */}
+        {/* Left Column 3D Showcase */}
         <div className="saas-auth-left">
           <div className="saas-brand-header">
-            <div className="saas-brand-badge">
-              <div className="saas-brand-icon">
-                <Fuel size={28} />
-              </div>
-              <span
-                style={{
-                  fontSize: "12px",
-                  fontWeight: "800",
-                  color: "var(--orange)",
-                  letterSpacing: "0.15em",
-                  textTransform: "uppercase",
-                }}
-              >
-                FDMS SECURITY PORTAL
-              </span>
+            <div className="codefus-brand-badge">
+              <div className="codefus-brand-badge-dot"></div>
+              <span className="codefus-brand-badge-text">CODEFUS // CRYPTOGRAPHIC KEY VAULT</span>
             </div>
-            <h1 className="saas-brand-title">Account Recovery & Password Reset</h1>
-            <p className="saas-brand-tagline">
-              Secure single-use OTP verification with encrypted credential update to keep your corporate fuel logistics account safe.
+            <h1 className="codefus-brand-title">Cryptographic Key Vault & Access Recovery</h1>
+            <p className="codefus-brand-tagline">
+              Zero-trust identity verification, 5-minute single-use OTP key generation, and SHA-256 credential rotation.
             </p>
           </div>
 
-          <div className="truck-graphic-container">
-            <div className="truck-radar-bg">
-              <div className="truck-radar-ring r1"></div>
-              <div className="truck-radar-ring r2"></div>
+          <div
+            className="codefus-3d-stage"
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
+            style={{
+              transform: `perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
+              transition: tilt.x === 0 && tilt.y === 0 ? "transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)" : "transform 0.1s ease-out",
+            }}
+          >
+            {/* Holographic Floating Telemetry HUD Badges */}
+            <div className="codefus-hud-chip chip-top-left">
+              <span className="codefus-beacon-dot beacon-cyan"></span>
+              <span>256-Bit Vault: Armed</span>
             </div>
 
-            <div style={{ textAlign: "center", position: "relative", zIndex: 5, padding: "40px 20px" }}>
-              <div
-                style={{
-                  width: "80px",
-                  height: "80px",
-                  borderRadius: "24px",
-                  background: "var(--grad-flame)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  margin: "0 auto 20px",
-                  boxShadow: "0 0 30px var(--orange-glow)",
-                  color: "#FFFFFF",
-                }}
-              >
-                <KeyRound size={40} />
+            <div className="codefus-hud-chip chip-top-right">
+              <span className="codefus-beacon-dot beacon-orange"></span>
+              <span>Single-Use Key • 300s TTL</span>
+            </div>
+
+            <div className="codefus-hud-chip chip-bottom-left">
+              <span className="codefus-beacon-dot beacon-green"></span>
+              <span>SHA-256 Encrypted Payload</span>
+            </div>
+
+            <div className="codefus-hud-chip chip-bottom-right">
+              <ShieldCheck size={13} style={{ color: "#12DCD4" }} />
+              <span>Zero-Trust Protocol</span>
+            </div>
+
+            {/* High-Fidelity 3D Security Vault Render */}
+            <img
+              src="/assets/fuel_3d_security_vault.jpg"
+              alt="Cryptographic Fuel Key & Security Vault 3D Illustration"
+              className="codefus-3d-visual"
+            />
+
+            {/* Live Security Metrics Footer Bar */}
+            <div className="codefus-telemetry-bar">
+              <div className="codefus-telemetry-stat">
+                <span className="label">Vault Status</span>
+                <span className="value" style={{ color: "#12DCD4" }}>Armed</span>
               </div>
-              <h3 style={{ color: "var(--text)", fontWeight: "800", margin: "0 0 8px" }}>
-                Multi-Factor OTP Guard
-              </h3>
-              <p style={{ color: "var(--text-dim)", fontSize: "13px", maxWidth: "280px", margin: "0 auto" }}>
-                5-minute time-bound OTP generation guarantees single-use recovery protection.
-              </p>
+              <div className="codefus-telemetry-stat">
+                <span className="label">OTP TTL</span>
+                <span className="value" style={{ color: "#F59E0B" }}>300 Sec</span>
+              </div>
+              <div className="codefus-telemetry-stat">
+                <span className="label">Hash Alg</span>
+                <span className="value" style={{ color: "#10B981" }}>SHA-256</span>
+              </div>
+              <div className="codefus-telemetry-stat">
+                <span className="label">Access Lock</span>
+                <span className="value" style={{ color: "#38BDF8" }}>Zero-Trust</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Feature Highlights Bento Grid */}
+          <div className="codefus-features-grid">
+            <div className="codefus-feature-card">
+              <div className="codefus-feature-icon">
+                <Shield size={16} />
+              </div>
+              <div className="codefus-feature-text">Time-Bound OTP Exchange</div>
+            </div>
+            <div className="codefus-feature-card">
+              <div className="codefus-feature-icon">
+                <Lock size={16} />
+              </div>
+              <div className="codefus-feature-text">Encrypted Credential Hashing</div>
+            </div>
+            <div className="codefus-feature-card">
+              <div className="codefus-feature-icon">
+                <ShieldCheck size={16} />
+              </div>
+              <div className="codefus-feature-text">Zero-Trust Session Flush</div>
+            </div>
+            <div className="codefus-feature-card">
+              <div className="codefus-feature-icon">
+                <Sparkles size={16} />
+              </div>
+              <div className="codefus-feature-text">Tamper-Proof Audit Log</div>
             </div>
           </div>
         </div>
 
         {/* Right Column Form */}
         <div className="saas-auth-right">
+          <div className="codefus-glass-card glass-auth-card">
           <div className="login-card-header">
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-              <Link to="/login" style={{ color: "var(--orange)", textDecoration: "none", display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", fontWeight: "700" }}>
+              <Link to="/login" style={{ color: "var(--orange)", textDecoration: "none", display: "flex", alignItems: "center", gap: "4px", fontSize: "13.5px", fontWeight: "700" }}>
                 <ArrowLeft size={14} /> Back to Sign In
               </Link>
             </div>
@@ -368,7 +426,7 @@ export default function ForgotPassword() {
                   <span className="input-label">6-Digit Verification OTP</span>
                   <span
                     style={{
-                      fontSize: "12px",
+                      fontSize: "13px",
                       fontWeight: "700",
                       color: otpTimer > 0 ? "var(--orange)" : "var(--red, #ef4444)",
                     }}
@@ -407,7 +465,7 @@ export default function ForgotPassword() {
                     background: "none",
                     border: "none",
                     color: "var(--text-dim)",
-                    fontSize: "12px",
+                    fontSize: "13px",
                     fontWeight: "600",
                     cursor: "pointer",
                   }}
@@ -423,7 +481,7 @@ export default function ForgotPassword() {
                     background: "none",
                     border: "none",
                     color: otpTimer > 0 ? "var(--text-dim)" : "var(--orange)",
-                    fontSize: "12px",
+                    fontSize: "13px",
                     fontWeight: "700",
                     cursor: otpTimer > 0 ? "not-allowed" : "pointer",
                   }}
@@ -518,7 +576,7 @@ export default function ForgotPassword() {
               </p>
               <button
                 type="button"
-                className="saas-submit-btn"
+                className="codefus-submit-btn saas-submit-btn"
                 onClick={() => navigate("/login")}
                 style={{ width: "100%" }}
               >
@@ -527,6 +585,7 @@ export default function ForgotPassword() {
               </button>
             </div>
           )}
+          </div>
         </div>
       </div>
     </div>

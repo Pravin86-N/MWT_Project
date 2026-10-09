@@ -1,7 +1,8 @@
 // Recently Accessed Items Tracking Service
-// Tracks: Recent Orders, Recent Customers, Recent Vehicles, Recent Reports
+// Tracks: Recently Viewed Orders, Customers, Vehicles, Reports
+// Storage schema: userId, resourceType, resourceId, resourceName, accessedAt
 
-const STORAGE_KEY = "fdms_recently_accessed_v1";
+const STORAGE_KEY = "fdms_recently_accessed_v2";
 
 const DEFAULT_DATA = {
   orders: [],
@@ -12,7 +13,7 @@ const DEFAULT_DATA = {
 
 export function getAllRecentAccess() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("fdms_recently_accessed_v1");
     if (!raw) return { ...DEFAULT_DATA };
     const parsed = JSON.parse(raw);
     return {
@@ -32,39 +33,47 @@ export function getRecentAccess(category) {
   return all[category] || [];
 }
 
+/**
+ * Record a viewed resource adhering to the FuelNet schema:
+ * { userId, resourceType, resourceId, resourceName, accessedAt }
+ */
 export function recordRecentAccess(category, item) {
-  if (!category || !item || !item.id) return;
+  if (!category || !item) return;
   const validCategories = ["orders", "customers", "vehicles", "reports"];
   if (!validCategories.includes(category)) return;
+
+  const id = item.id || item.resourceId;
+  if (!id) return;
 
   try {
     const all = getAllRecentAccess();
     const existingList = all[category] || [];
 
-    // Remove duplicates if already recorded
-    const filtered = existingList.filter((x) => x.id !== item.id);
+    // Remove duplicates
+    const filtered = existingList.filter((x) => (x.id || x.resourceId) !== id);
 
-    // Prepend latest entry with timestamp
-    const updatedCategoryList = [
-      {
-        id: item.id,
-        title: item.title || item.id,
-        subtitle: item.subtitle || "",
-        link: item.link || (category === "orders" ? `/orders/${item.id}` : `/${category}`),
-        timestamp: Date.now(),
-        meta: item.meta || {},
-      },
-      ...filtered,
-    ].slice(0, 10); // Keep latest 10 items per category
+    const now = Date.now();
+    const newEntry = {
+      id,
+      resourceId: id,
+      resourceType: item.resourceType || category,
+      resourceName: item.resourceName || item.title || item.name || id,
+      title: item.resourceName || item.title || item.name || id,
+      subtitle: item.subtitle || "",
+      userId: item.userId || "current_user",
+      accessedAt: item.accessedAt || now,
+      timestamp: item.timestamp || now,
+      link: item.link || (category === "orders" ? `/orders/${id}` : `/${category}`),
+      meta: item.meta || {},
+    };
 
-    all[category] = updatedCategoryList;
+    all[category] = [newEntry, ...filtered].slice(0, 50); // Store up to 50 for View All pagination
     localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
 
-    // Notify active listeners across windows/tabs
     if (typeof window !== "undefined") {
       window.dispatchEvent(
         new CustomEvent("fdms-recent-access-updated", {
-          detail: { category, item },
+          detail: { category, item: newEntry },
         })
       );
     }

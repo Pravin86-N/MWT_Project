@@ -47,6 +47,31 @@ const getRegistrations = async (req, res, next) => {
       ];
     }
 
+    const page = parseInt(req.query.page, 10);
+    const limit = parseInt(req.query.limit, 10);
+
+    if (page || limit) {
+      const p = Math.max(1, page || 1);
+      const l = Math.max(1, limit || 10);
+      const skip = (p - 1) * l;
+      const totalRecords = await Registration.countDocuments(filter);
+      const totalPages = Math.ceil(totalRecords / l) || 1;
+      const paginatedRegs = await Registration.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(l);
+
+      return res.status(200).json({
+        success: true,
+        data: paginatedRegs,
+        page: p,
+        limit: l,
+        totalRecords,
+        totalPages,
+        count: paginatedRegs.length,
+      });
+    }
+
     const registrations = await Registration.find(filter).sort({
       createdAt: -1,
     });

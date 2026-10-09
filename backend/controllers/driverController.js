@@ -2,6 +2,7 @@ const Driver = require('../models/Driver');
 const DriverLocation = require('../models/DriverLocation');
 const Vehicle = require('../models/Vehicle');
 const { getIO } = require('../config/socket');
+const { scopeToDepot } = require('../utils/depotScope');
 
 // @desc    Get all drivers
 // @route   GET /api/drivers
@@ -9,8 +10,32 @@ const { getIO } = require('../config/socket');
 const getDrivers = async (req, res, next) => {
   try {
     const { onDuty } = req.query;
-    const filter = {};
+    let filter = {};
     if (onDuty !== undefined) filter.onDuty = onDuty === 'true';
+
+    filter = scopeToDepot(req, filter);
+
+    const page = parseInt(req.query.page, 10);
+    const limit = parseInt(req.query.limit, 10);
+
+    if (page || limit) {
+      const p = Math.max(1, page || 1);
+      const l = Math.max(1, limit || 10);
+      const skip = (p - 1) * l;
+      const totalRecords = await Driver.countDocuments(filter);
+      const totalPages = Math.ceil(totalRecords / l) || 1;
+      const paginatedDrivers = await Driver.find(filter).sort({ name: 1 }).skip(skip).limit(l);
+
+      return res.json({
+        success: true,
+        data: paginatedDrivers,
+        page: p,
+        limit: l,
+        totalRecords,
+        totalPages,
+        count: paginatedDrivers.length,
+      });
+    }
 
     const drivers = await Driver.find(filter).sort({ name: 1 });
 
@@ -60,6 +85,7 @@ const createDriver = async (req, res, next) => {
       onDuty: onDuty !== undefined ? onDuty : true,
       licenseNumber: licenseNumber || '',
       email: email || '',
+      depot: req.body.depot || req.user?.depot || 'DEP-CHN-01',
     });
 
     res.status(201).json({

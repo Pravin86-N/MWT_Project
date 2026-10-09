@@ -100,6 +100,11 @@ const inventorySchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    depot: {
+      type: String,
+      default: 'DEP-CHN-01',
+      trim: true,
+    },
     temp: {
       type: Number,
       default: 25.0,

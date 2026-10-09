@@ -98,6 +98,11 @@ const orderSchema = new mongoose.Schema(
       default: 'Chennai',
       trim: true,
     },
+    depot: {
+      type: String,
+      default: 'DEP-CHN-01',
+      trim: true,
+    },
     slot: {
       type: String,
       default: '08:00-10:00',

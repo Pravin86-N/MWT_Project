@@ -1,6 +1,7 @@
 const VehicleLocation = require('../models/VehicleLocation');
 const Vehicle = require('../models/Vehicle');
 const { getIO } = require('../config/socket');
+const { scopeToDepot } = require('../utils/depotScope');
 
 // @desc    Update vehicle GPS location
 // @route   POST /api/gps/update
@@ -121,7 +122,8 @@ const updateGpsLocation = async (req, res, next) => {
 // @access  Public / Protected
 const getVehicleLocations = async (req, res, next) => {
   try {
-    const vehicles = await Vehicle.find().select('vehicleNumber vehicle driverName driver latitude longitude lat lng speed status fuelLevel location locationHistory');
+    const filter = scopeToDepot(req, {});
+    const vehicles = await Vehicle.find(filter).select('vehicleNumber vehicle driverName driver latitude longitude lat lng speed status fuelLevel location locationHistory depot');
     res.status(200).json({
       success: true,
       count: vehicles.length,

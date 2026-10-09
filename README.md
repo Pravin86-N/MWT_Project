@@ -12,10 +12,17 @@ npm install
 npm run dev
 ```
 
-Then open the printed local URL. Demo accounts:
+Then open the printed local URL. Enterprise Role Demo Accounts:
 
-- `pravin@123` / `pravin123` (Depot Manager)
-- `admin@fdms.com` / `admin123` (Admin)
+- **Platform Admin:** `admin@fdms.com` / `admin123` (Governance, Tariffs, User Roles, Multi-Depot Oversight)
+- **Depot Manager (Chennai):** `pravin@123` / `pravin123` (Assigned to `DEP-CHN-01`, Tank Refills, Tanker & Driver Dispatch)
+- **Depot Manager (Coimbatore):** `coimbatore.mgr@fdms.com` / `manager123` (Assigned to `DEP-CBE-05`, Western Hub Logistics)
+- **Support Executive:** `support@fdms.com` / `support123` (Customer Service, Orders Inquiries)
+- **Compliance Auditor:** `auditor@fdms.com` / `auditor123` (Independent Audit Trail, Manifests, PESO Verification)
+- **Corporate Customer:** `customer@fdms.com` / `customer123` (Commercial Order Placement & Consignment Tracking)
+- **Tanker Driver:** `driver@fdms.com` / `driver123` (Field Delivery Telemetry & Proof of Discharge)
+
+For full architectural documentation, permission matrix, and terminal jurisdictions, see [ROLES.md](file:///d:/MWT_project/fuel-delivery-app/ROLES.md).
 
 ## What's in it
 

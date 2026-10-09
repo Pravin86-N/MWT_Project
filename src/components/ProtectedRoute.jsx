@@ -1,9 +1,10 @@
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { getRoleHomeRoute, ROLES } from "../utils/permissions";
 import LoadingScreen from "./LoadingScreen";
 
-export default function ProtectedRoute({ children, adminOnly = false }) {
+export default function ProtectedRoute({ children, adminOnly = false, allowedRoles = null }) {
   const { state } = useAuth();
   const location = useLocation();
 
@@ -21,13 +22,35 @@ export default function ProtectedRoute({ children, adminOnly = false }) {
   }
 
   const currentUser = state.user || (userStr ? JSON.parse(userStr) : null);
-  const userRole = (currentUser?.role || "").toLowerCase();
+  const userRole = (currentUser?.role || "").trim();
+  const normalizedUserRole = userRole.toLowerCase();
 
-  if (adminOnly && (userRole === "customer" || userRole === "driver")) {
-    const target = userRole === "customer" ? "/customer-portal" : "/driver-portal";
-    console.warn(`[ProtectedRoute] Access restricted for ${currentUser?.role} on ${location.pathname} - Redirecting to ${target}`);
+  // If specific roles are required, verify against allowed list
+  if (allowedRoles && Array.isArray(allowedRoles) && allowedRoles.length > 0) {
+    const isAllowed = allowedRoles.some(
+      (r) => (r || "").trim().toLowerCase() === normalizedUserRole
+    );
+
+    if (!isAllowed) {
+      const target = getRoleHomeRoute(userRole);
+      console.warn(
+        `[ProtectedRoute] Access restricted: role "${userRole}" is not authorized for "${location.pathname}". Allowed roles: ${allowedRoles.join(
+          ", "
+        )}. Redirecting to ${target}`
+      );
+      return <Navigate to={target} replace />;
+    }
+  }
+
+  // Backwards compatibility for adminOnly (excludes customer and driver)
+  if (adminOnly && (normalizedUserRole === "customer" || normalizedUserRole === "driver")) {
+    const target = getRoleHomeRoute(userRole);
+    console.warn(
+      `[ProtectedRoute] Access restricted for ${userRole} on ${location.pathname} - Redirecting to ${target}`
+    );
     return <Navigate to={target} replace />;
   }
 
   return children;
 }
+

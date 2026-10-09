@@ -67,7 +67,9 @@ const getActivityLogs = async (req, res, next) => {
       success: true,
       count: logs.length,
       total,
+      totalRecords: total,
       page: pageNum,
+      limit: limitNum,
       totalPages: Math.ceil(total / limitNum) || 1,
       data: logs,
     });

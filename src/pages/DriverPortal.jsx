@@ -29,6 +29,9 @@ import { useOrders } from "../context/OrdersContext";
 import { useNotifications } from "../context/NotificationContext";
 import { vehicleApi, driverApi } from "../services/api";
 import StatusPill from "../components/StatusPill";
+import FuelBadge from "../components/FuelBadge";
+import { playDeliveryCompletedSound } from "../utils/soundNotifications";
+import { getSocket } from "../services/socket";
 
 // Smooth Leaflet camera follow component for driver
 function MapRecenter({ center }) {
@@ -122,6 +125,7 @@ export default function DriverPortal() {
   const [speed, setSpeed] = useState(0);
   const [accuracy, setAccuracy] = useState(0);
   const [isTracking, setIsTracking] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState("Standby");
   const [gpsError, setGpsError] = useState(null);
   const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [deliveryStep, setDeliveryStep] = useState("idle"); // 'idle' | 'in_transit' | 'reached' | 'delivering'
@@ -155,7 +159,7 @@ export default function DriverPortal() {
     };
   }, []);
 
-  // Transmit location to backend API (POST /api/drivers/location) every 5 seconds (Requirement 2 & 3)
+  // Transmit location to backend API (POST /api/drivers/location) and Socket.IO every 5 seconds (Requirement 1, 2, 3)
   const transmitLocation = useCallback(async (lat, lng, spd, acc, head) => {
     const currentLat = lat ?? latestCoordsRef.current.lat;
     const currentLng = lng ?? latestCoordsRef.current.lng;
@@ -172,6 +176,17 @@ export default function DriverPortal() {
       heading: head ?? latestCoordsRef.current.heading,
       timestamp: new Date().toISOString(),
     };
+
+    // Emit live GPS event via WebSocket for instant sub-second map updates
+    try {
+      const socket = getSocket();
+      if (socket) {
+        socket.emit("vehicle-location-update", payload);
+        socket.emit("update_location", payload);
+      }
+    } catch (sockErr) {
+      console.warn("[DriverPortal] Socket emit error:", sockErr.message);
+    }
 
     try {
       await driverApi.sendLocation(payload);
@@ -372,6 +387,7 @@ export default function DriverPortal() {
   // Submit Delivered with Proof
   const handleConfirmDelivered = () => {
     if (!selectedOrder) return;
+    playDeliveryCompletedSound();
     updateOrder(selectedOrder.id || selectedOrder._id, {
       status: "Delivered",
       deliveryProof: proofFile ? proofFile.name : "discharge_meter_verified.jpg",
@@ -400,9 +416,9 @@ export default function DriverPortal() {
       <div className="fleet-header-saas" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-            <span className="live-dot-pulse"></span>
-            <span style={{ fontSize: "11px", fontWeight: "800", color: "var(--orange)", letterSpacing: "0.15em", textTransform: "uppercase" }}>
-              DRIVER ACTIVE DISPATCH CONSOLE
+            <span className={isTracking ? "live-gps-pulse" : ""} style={{ width: "10px", height: "10px", borderRadius: "50%", background: isTracking ? "var(--status-success, #22C55E)" : "var(--text-dim)" }}></span>
+            <span style={{ fontSize: "12px", fontWeight: "800", color: isTracking ? "var(--status-success, #22C55E)" : "var(--text-dim)", letterSpacing: "0.15em", textTransform: "uppercase" }}>
+              {isTracking ? "LIVE TRACKING" : "DRIVER DISPATCH CONSOLE"}
             </span>
           </div>
           <h1 className="fleet-title-saas">Driver Cockpit — {user?.name || "R. Rangarajan"}</h1>
@@ -412,50 +428,28 @@ export default function DriverPortal() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-          {/* Coordinates Readout (Requirement 1) */}
-          <div className="metric-chip" style={{ background: "var(--panel)", padding: "10px 14px", borderRadius: "12px", border: "1px solid var(--line)" }}>
-            <span style={{ fontSize: "10px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: "700" }}>Coordinates</span>
-            <strong style={{ display: "block", color: "var(--orange)", fontSize: "12px", fontFamily: "monospace" }}>
-              {gpsCoord[0].toFixed(5)}, {gpsCoord[1].toFixed(5)}
-            </strong>
-          </div>
-
-          {/* Speed chip */}
-          <div className="metric-chip" style={{ background: "var(--panel)", padding: "10px 14px", borderRadius: "12px", border: "1px solid var(--line)" }}>
-            <span style={{ fontSize: "10px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: "700" }}>Speed</span>
-            <strong style={{ display: "block", color: "var(--blue)", fontSize: "13px" }}>{speed} km/h</strong>
-          </div>
-
-          {/* Tracking Status chip */}
-          <div className="metric-chip" style={{ background: "var(--panel)", padding: "10px 14px", borderRadius: "12px", border: "1px solid var(--line)" }}>
-            <span style={{ fontSize: "10px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: "700" }}>GPS Status</span>
-            <strong style={{ display: "block", color: isTracking ? "var(--green-neon)" : "var(--amber)", fontSize: "13px" }}>
-              {isTracking ? "● Live (5s)" : "○ Standby"}
-            </strong>
-          </div>
-
-          {/* Start / Stop Tracking Buttons (Requirement 1) */}
+          {/* Start / Stop Tracking Buttons (Section 9) */}
           {!isTracking ? (
             <button
               type="button"
               id="start-tracking-btn"
               onClick={handleStartTracking}
               style={{
-                background: "var(--green-neon)",
-                border: "1px solid var(--green-neon)",
-                color: "#000",
+                background: "var(--status-success, #22C55E)",
+                border: "1px solid var(--status-success, #22C55E)",
+                color: "#FFFFFF",
                 fontWeight: "800",
-                padding: "10px 16px",
+                padding: "10px 18px",
                 borderRadius: "12px",
                 display: "flex",
                 alignItems: "center",
-                gap: "6px",
-                fontSize: "13px",
+                gap: "8px",
+                fontSize: "14px",
                 cursor: "pointer",
-                boxShadow: "0 0 12px rgba(16, 185, 129, 0.4)",
+                boxShadow: "0 0 16px rgba(34, 197, 94, 0.4)",
               }}
             >
-              <Navigation size={16} /> Start Tracking
+              <Navigation size={16} /> Start Live Tracking
             </button>
           ) : (
             <button
@@ -467,18 +461,108 @@ export default function DriverPortal() {
                 border: "1px solid #EF4444",
                 color: "#EF4444",
                 fontWeight: "800",
-                padding: "10px 16px",
+                padding: "10px 18px",
                 borderRadius: "12px",
                 display: "flex",
                 alignItems: "center",
-                gap: "6px",
-                fontSize: "13px",
+                gap: "8px",
+                fontSize: "14px",
                 cursor: "pointer",
               }}
             >
               <AlertCircle size={16} /> Stop Tracking
             </button>
           )}
+        </div>
+      </div>
+
+      {/* SECTION 9: DEDICATED LIVE TRACKING TELEMETRY PANEL */}
+      <div
+        className="driver-live-telemetry-bar"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gap: "14px",
+          padding: "16px 20px",
+          background: "var(--card-bg, #1E293B)",
+          border: isTracking ? "1px solid var(--status-success, #22C55E)" : "1px solid var(--line)",
+          borderRadius: "14px",
+          boxShadow: isTracking ? "0 0 24px rgba(34, 197, 94, 0.15)" : "none",
+          transition: "all 0.3s ease",
+        }}
+      >
+        {/* Status Badge with Live Pulse */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div
+            className={isTracking ? "live-gps-pulse" : ""}
+            style={{
+              width: "14px",
+              height: "14px",
+              borderRadius: "50%",
+              background: isTracking ? "var(--status-success, #22C55E)" : "var(--text-dim, #94A3B8)",
+              flexShrink: 0,
+            }}
+          />
+          <div>
+            <span style={{ fontSize: "11px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: "700", display: "block" }}>
+              Telemetry State
+            </span>
+            <strong style={{ fontSize: "14px", color: isTracking ? "var(--status-success, #22C55E)" : "var(--text-dim)", letterSpacing: "0.05em" }}>
+              {isTracking ? "LIVE TRACKING" : "STANDBY"}
+            </strong>
+          </div>
+        </div>
+
+        {/* Current Coordinates */}
+        <div>
+          <span style={{ fontSize: "11px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: "700", display: "block" }}>
+            Current Coordinates
+          </span>
+          <strong className="mono" style={{ fontSize: "13px", color: "var(--text)", display: "block" }}>
+            Lat: {gpsCoord[0].toFixed(5)}°
+          </strong>
+          <strong className="mono" style={{ fontSize: "13px", color: "var(--text-dim)", display: "block" }}>
+            Lng: {gpsCoord[1].toFixed(5)}°
+          </strong>
+        </div>
+
+        {/* GPS Accuracy */}
+        <div>
+          <span style={{ fontSize: "11px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: "700", display: "block" }}>
+            GPS Accuracy
+          </span>
+          <strong style={{ fontSize: "14px", color: "var(--fuel-electric, #3B82F6)" }}>
+            ±{accuracy || 5} m
+          </strong>
+          <span style={{ fontSize: "12px", color: "var(--text-dim)", display: "block" }}>
+            High-Precision Fix
+          </span>
+        </div>
+
+        {/* Speed */}
+        <div>
+          <span style={{ fontSize: "11px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: "700", display: "block" }}>
+            Current Speed
+          </span>
+          <strong style={{ fontSize: "15px", color: "var(--fuel-diesel, #F59E0B)" }}>
+            {speed} km/h
+          </strong>
+          <span style={{ fontSize: "12px", color: "var(--text-dim)", display: "block" }}>
+            Telemetry Stream
+          </span>
+        </div>
+
+        {/* Last Update */}
+        <div>
+          <span style={{ fontSize: "11px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: "700", display: "block" }}>
+            Last Update
+          </span>
+          <strong style={{ fontSize: "13px", color: isTracking ? "var(--text)" : "var(--text-dim)" }}>
+            {lastUpdate}
+          </strong>
+          <span style={{ fontSize: "12px", color: "var(--text-dim)", display: "block" }}>
+            {isTracking ? "Broadcasting 5s" : "Idle"}
+          </span>
         </div>
       </div>
 
@@ -513,9 +597,9 @@ export default function DriverPortal() {
         </div>
       )}
 
-      {/* Driver KPI Cards (Requirement 9: Assigned Deliveries, Completed Deliveries) */}
+      {/* Driver KPI Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px" }}>
-        <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--orange)" }}>
+        <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--fuel-diesel, #F59E0B)" }}>
           <div className="kpi-card-head">
             <span className="kpi-card-lbl">Assigned Deliveries</span>
             <div className="kpi-icon-badge">
@@ -529,7 +613,7 @@ export default function DriverPortal() {
           </div>
         </div>
 
-        <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--green-neon)" }}>
+        <div className="kpi-card-saas" style={{ "--kpi-accent": "var(--status-success, #22C55E)" }}>
           <div className="kpi-card-head">
             <span className="kpi-card-lbl">Completed Deliveries</span>
             <div className="kpi-icon-badge">
@@ -549,48 +633,52 @@ export default function DriverPortal() {
         {/* LEFT: Assigned Deliveries Queue */}
         <div className="card portal-panel" style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "700" }}>Assigned Deliveries ({driverDeliveries.length})</h3>
-            <span className="pill" style={{ "--pill-color": "var(--orange)" }}>TODAY'S RUNS</span>
+            <h3 style={{ margin: 0, fontSize: "17px", fontWeight: "700" }}>Assigned Deliveries ({driverDeliveries.length})</h3>
+            <span className="pill" style={{ "--pill-color": "var(--fuel-diesel, #F59E0B)" }}>TODAY'S RUNS</span>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             {driverDeliveries.length === 0 ? (
-              <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-dim)", fontStyle: "italic", fontSize: "13px" }}>
+              <div style={{ padding: "32px 16px", textAlign: "center", color: "var(--text-dim)", fontStyle: "italic", fontSize: "14px" }}>
                 No active delivery orders currently assigned to your shift. You are available in the dispatcher queue.
               </div>
             ) : (
               driverDeliveries.map((o) => {
                 const isSelected = selectedOrder?.id === o.id || selectedOrder?._id === o._id;
-              return (
-                <div
-                  key={o.id}
-                  onClick={() => setSelectedOrder(o)}
-                  style={{
-                    background: isSelected ? "color-mix(in srgb, var(--orange) 10%, var(--panel))" : "var(--grad-dark-panel)",
-                    border: isSelected ? "2px solid var(--orange)" : "1px solid var(--line)",
-                    borderRadius: "14px",
-                    padding: "16px",
-                    cursor: "pointer",
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                    <span className="order-num-tag">{o.orderNumber}</span>
-                    <StatusPill status={o.status} />
-                  </div>
+                return (
+                  <div
+                    key={o.id || o._id}
+                    onClick={() => setSelectedOrder(o)}
+                    style={{
+                      background: isSelected ? "color-mix(in srgb, var(--fuel-diesel, #F59E0B) 10%, var(--panel))" : "var(--grad-dark-panel)",
+                      border: isSelected ? "2px solid var(--fuel-diesel, #F59E0B)" : "1px solid var(--line)",
+                      borderRadius: "14px",
+                      padding: "16px",
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <span className="order-num-tag">#{o.orderNumber}</span>
+                      <StatusPill status={o.status} />
+                    </div>
 
-                  <strong style={{ fontSize: "15px", color: "var(--text)", display: "block" }}>{o.customer}</strong>
-                  <div style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
-                    <MapPin size={13} style={{ color: "var(--orange)" }} /> {o.site || o.deliveryAddress} ({o.city})
-                  </div>
+                    <strong style={{ fontSize: "16px", color: "var(--text)", display: "block" }}>{o.customer}</strong>
+                    <div style={{ fontSize: "13px", color: "var(--text-dim)", marginTop: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <MapPin size={13} style={{ color: "var(--fuel-diesel, #F59E0B)" }} /> {o.site || o.deliveryAddress} ({o.city})
+                    </div>
 
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: "10px", paddingTop: "8px", borderTop: "1px dashed var(--line)", fontSize: "12px" }}>
-                    <span style={{ color: "var(--orange)", fontWeight: "700" }}>{o.qty || o.quantity} L {o.fuelCode || o.fuelType}</span>
-                    <span style={{ color: "var(--text-dim)" }}>Slot: {o.slot || "08:00-10:00"}</span>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px", paddingTop: "8px", borderTop: "1px dashed var(--line)", fontSize: "13px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <FuelBadge fuelType={o.fuelCode || o.fuelType} />
+                        <span style={{ fontWeight: "700" }}>{(o.qty || o.quantity || 0).toLocaleString()} L</span>
+                      </div>
+                      <span style={{ color: "var(--text-dim)" }}>Slot: {o.slot || "08:00-10:00"}</span>
+                    </div>
                   </div>
-                </div>
-              );
-            }))}
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -599,20 +687,23 @@ export default function DriverPortal() {
           <div className="card portal-panel" style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "18px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
               <div>
-                <span style={{ fontSize: "11px", color: "var(--orange)", fontWeight: "800", textTransform: "uppercase" }}>
+                <span style={{ fontSize: "12px", color: "var(--fuel-diesel, #F59E0B)", fontWeight: "800", textTransform: "uppercase" }}>
                   Active Mission Drop-Off
                 </span>
-                <h2 style={{ margin: "2px 0 0", fontSize: "20px", fontWeight: "800" }}>
+                <h2 style={{ margin: "2px 0 0", fontSize: "22px", fontWeight: "800" }}>
                   {selectedOrder.customer} — #{selectedOrder.orderNumber}
                 </h2>
-                <div style={{ fontSize: "13px", color: "var(--text-dim)", marginTop: "4px", display: "flex", alignItems: "center", gap: "14px" }}>
-                  <span><Building2 size={14} style={{ color: "var(--blue)" }} /> {selectedOrder.site || selectedOrder.deliveryAddress}</span>
-                  <span><Fuel size={14} style={{ color: "var(--orange)" }} /> {selectedOrder.qty || selectedOrder.quantity} L {selectedOrder.fuelCode || selectedOrder.fuelType}</span>
+                <div style={{ fontSize: "14px", color: "var(--text-dim)", marginTop: "6px", display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
+                  <span><Building2 size={14} style={{ color: "var(--fuel-electric, #3B82F6)" }} /> {selectedOrder.site || selectedOrder.deliveryAddress}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <FuelBadge fuelType={selectedOrder.fuelCode || selectedOrder.fuelType} />
+                    <span>{(selectedOrder.qty || selectedOrder.quantity || 0).toLocaleString()} L</span>
+                  </div>
                 </div>
               </div>
 
               <div style={{ textAlign: "right" }}>
-                <span className="pill" style={{ "--pill-color": "var(--green-neon)" }}>
+                <span className="pill" style={{ "--pill-color": "var(--status-success, #22C55E)" }}>
                   TANKER: {selectedOrder.vehicle || "TN-01-AB-1234"}
                 </span>
               </div>
@@ -749,17 +840,17 @@ export default function DriverPortal() {
         <div className="modal-backdrop" onClick={() => setShowProofModal(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "520px", background: "var(--panel)", borderRadius: "18px", border: "1px solid var(--line)", padding: "24px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "800" }}>Delivery Discharge Confirmation</h3>
+              <h3 style={{ margin: 0, fontSize: "20px", fontWeight: "800" }}>Delivery Discharge Confirmation</h3>
               <button className="icon-btn" onClick={() => setShowProofModal(false)}>✕</button>
             </div>
 
-            <p style={{ margin: "0 0 16px 0", fontSize: "13px", color: "var(--text-dim)" }}>
+            <p style={{ margin: "0 0 16px 0", fontSize: "14px", color: "var(--text-dim)" }}>
               Discharge verification for <strong>{selectedOrder.customer}</strong> ({selectedOrder.qty} L {selectedOrder.fuelCode}).
             </p>
 
             {/* 1. Upload Delivery Proof */}
             <div style={{ marginBottom: "18px" }}>
-              <label style={{ display: "block", fontSize: "13px", fontWeight: "700", marginBottom: "8px" }}>
+              <label style={{ display: "block", fontSize: "14px", fontWeight: "700", marginBottom: "8px" }}>
                 1. Upload Meter Discharge Photo / Delivery Slip
               </label>
               <div
@@ -774,10 +865,10 @@ export default function DriverPortal() {
                 onClick={() => document.getElementById("proof-file-input").click()}
               >
                 <UploadCloud size={24} style={{ color: "var(--orange)", margin: "0 auto 6px" }} />
-                <div style={{ fontSize: "13px", color: "var(--text)" }}>
+                <div style={{ fontSize: "14px", color: "var(--text)" }}>
                   {proofFile ? proofFile.name : "Click to select or capture discharge meter photo"}
                 </div>
-                <small style={{ color: "var(--text-dim)", fontSize: "11px" }}>JPEG, PNG, or PDF</small>
+                <small style={{ color: "var(--text-dim)", fontSize: "12px" }}>JPEG, PNG, or PDF</small>
                 <input
                   id="proof-file-input"
                   type="file"
@@ -791,19 +882,19 @@ export default function DriverPortal() {
             {/* 2. Customer Signature Capture Pad */}
             <div style={{ marginBottom: "20px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                <label style={{ fontSize: "13px", fontWeight: "700" }}>
+                <label style={{ fontSize: "14px", fontWeight: "700" }}>
                   2. Customer Authorized Signature
                 </label>
                 <button
                   type="button"
                   onClick={clearSignature}
-                  style={{ background: "none", border: "none", color: "var(--orange)", fontSize: "12px", cursor: "pointer", fontWeight: "700" }}
+                  style={{ background: "none", border: "none", color: "var(--orange)", fontSize: "13px", cursor: "pointer", fontWeight: "700" }}
                 >
                   Clear Pad
                 </button>
               </div>
 
-              <div style={{ border: "1px solid var(--line)", borderRadius: "12px", overflow: "hidden", background: "#0B0F19" }}>
+              <div style={{ border: "1px solid var(--line)", borderRadius: "12px", overflow: "hidden", background: "var(--panel-alt)" }}>
                 <canvas
                   ref={canvasRef}
                   width={470}
@@ -818,7 +909,7 @@ export default function DriverPortal() {
                   style={{ display: "block", cursor: "crosshair", width: "100%" }}
                 />
               </div>
-              <small style={{ color: "var(--text-dim)", fontSize: "11px", display: "block", marginTop: "4px" }}>
+              <small style={{ color: "var(--text-dim)", fontSize: "12px", display: "block", marginTop: "4px" }}>
                 Sign above using mouse, stylus, or fingertip.
               </small>
             </div>

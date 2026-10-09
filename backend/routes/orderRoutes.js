@@ -15,37 +15,42 @@ const {
   deleteOrder,
   getSmartDispatchSuggestion,
 } = require('../controllers/orderController');
+const { protect, authorize, READ_STAFF } = require('../middleware/authMiddleware');
 
-// Main orders collection: List orders or Customer creates order
+// Main orders collection: List orders (Authenticated) or Customer creates order
 router
   .route('/')
-  .get(getOrders)
-  .post(createOrder);
+  .get(protect, getOrders)
+  .post(protect, createOrder);
 
-// Smart Fuel Dispatch suggestion route
-router.get('/:id/smart-dispatch', getSmartDispatchSuggestion);
-router.get('/smart-dispatch/suggest', getSmartDispatchSuggestion);
+// Smart Fuel Dispatch suggestion route (Admin & Depot Manager)
+router.get('/:id/smart-dispatch', protect, authorize('Admin', 'Depot Manager'), getSmartDispatchSuggestion);
+router.get('/smart-dispatch/suggest', protect, authorize('Admin', 'Depot Manager'), getSmartDispatchSuggestion);
 
-// Depot Manager dashboard: Pending orders awaiting approval
-router.get('/pending', getPendingOrders);
+// Pending orders awaiting approval (Staff)
+router.get('/pending', protect, authorize(READ_STAFF), getPendingOrders);
 
 // Delivery Queue: Approved orders ready for delivery & dispatch
-router.get('/delivery-queue', getDeliveryQueue);
-router.get('/queue', getDeliveryQueue);
+router.get('/delivery-queue', protect, authorize('Admin', 'Depot Manager', 'Support Executive', 'Auditor', 'Driver'), getDeliveryQueue);
+router.get('/queue', protect, authorize('Admin', 'Depot Manager', 'Support Executive', 'Auditor', 'Driver'), getDeliveryQueue);
 
-// Depot Manager workflow actions
-router.patch('/:id/approve', approveOrder);
-router.patch('/:id/reject', rejectOrder);
-router.patch('/:id/assign', assignOrder);
-router.put('/:id/assign', assignOrder);
-router.patch('/:id/status', updateOrderStatus);
+// Order approval workflow (Admin override & Depot Manager)
+router.patch('/:id/approve', protect, authorize('Admin', 'Depot Manager'), approveOrder);
+router.patch('/:id/reject', protect, authorize('Admin', 'Depot Manager'), rejectOrder);
 
-// Single order operations
-router.get('/:id/invoice', getOrderInvoice);
+// Driver & Vehicle assignment (Depot Manager ONLY - Admin gets 403)
+router.patch('/:id/assign', protect, authorize('Depot Manager'), assignOrder);
+router.put('/:id/assign', protect, authorize('Depot Manager'), assignOrder);
+
+// Order status updates (Admin, Depot Manager, Driver for deliveries, Customer for cancel)
+router.patch('/:id/status', protect, authorize('Admin', 'Depot Manager', 'Driver', 'Customer'), updateOrderStatus);
+
+// Single order operations & invoices
+router.get('/:id/invoice', protect, getOrderInvoice);
 router
   .route('/:id')
-  .get(getOrderById)
-  .put(updateOrder)
-  .delete(deleteOrder);
+  .get(protect, getOrderById)
+  .put(protect, authorize('Admin', 'Depot Manager'), updateOrder)
+  .delete(protect, authorize('Admin'), deleteOrder);
 
 module.exports = router;

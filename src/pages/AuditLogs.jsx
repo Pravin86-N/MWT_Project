@@ -16,12 +16,21 @@ import {
   Filter,
 } from "lucide-react";
 import { activityApi } from "../services/api";
+import Pagination from "../components/Pagination";
+import EmptyState from "../components/EmptyState";
+import { SkeletonTable } from "../components/Skeleton";
 
 export default function AuditLogs() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("All");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    setPage(1);
+  }, [actionFilter, search]);
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -119,6 +128,10 @@ export default function AuditLogs() {
     });
   }, [logs, actionFilter, search]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / pageSize));
+  const clampedPage = Math.min(page, totalPages);
+  const paginatedLogs = filteredLogs.slice((clampedPage - 1) * pageSize, clampedPage * pageSize);
+
   return (
     <div className="page" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       {/* Page Header */}
@@ -126,7 +139,7 @@ export default function AuditLogs() {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
             <Shield size={18} style={{ color: "var(--orange)" }} />
-            <span style={{ fontSize: "11px", fontWeight: "800", color: "var(--orange)", letterSpacing: "0.15em", textTransform: "uppercase" }}>
+            <span style={{ fontSize: "12.5px", fontWeight: "800", color: "var(--orange)", letterSpacing: "0.15em", textTransform: "uppercase" }}>
               SECURITY & COMPLIANCE
             </span>
           </div>
@@ -167,6 +180,7 @@ export default function AuditLogs() {
             <input
               type="text"
               placeholder="Search user, action, IP address..."
+              aria-label="Search audit logs by user, action, or IP address"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -179,124 +193,141 @@ export default function AuditLogs() {
         <div className="panel-head">
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <Activity size={18} style={{ color: "var(--orange)" }} />
-            <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700" }}>
+            <h3 style={{ margin: 0, fontSize: "17px", fontWeight: "700" }}>
               Audit Events ({filteredLogs.length} Records)
             </h3>
           </div>
-          <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>
+          <span style={{ fontSize: "13px", color: "var(--text-dim)" }}>
             Showing latest 100 system audit records
           </span>
         </div>
 
         {loading ? (
-          <div style={{ padding: "40px", textAlign: "center", color: "var(--text-dim)" }}>
-            Loading audit records from MongoDB...
-          </div>
+          <SkeletonTable rows={pageSize} columns={5} />
         ) : filteredLogs.length === 0 ? (
-          <div style={{ padding: "40px", textAlign: "center", color: "var(--text-dim)" }}>
-            No audit log records match the current filter or search query.
-          </div>
+          <EmptyState
+            type="search"
+            title="No audit trail events found."
+            message="No system activities match your category filter or search keywords."
+            actionLabel={search || actionFilter !== "All" ? "Reset Filters" : undefined}
+            onAction={() => {
+              setSearch("");
+              setActionFilter("All");
+            }}
+          />
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table>
-              <thead>
-                <tr>
-                  <th style={{ minWidth: "160px" }}>Action</th>
-                  <th style={{ minWidth: "160px" }}>User</th>
-                  <th style={{ minWidth: "220px" }}>Details / Target</th>
-                  <th style={{ minWidth: "130px" }}>IP Address</th>
-                  <th style={{ minWidth: "160px" }}>Timestamp</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLogs.map((log, idx) => {
-                  const badge = getActionBadge(log.action);
-                  const Icon = badge.icon;
-                  const dateObj = new Date(log.createdAt || log.timestamp || Date.now());
-                  const formattedDate = dateObj.toLocaleDateString("en-IN", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  });
-                  const formattedTime = dateObj.toLocaleTimeString("en-IN", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                    hour12: false,
-                  });
+          <>
+            <div style={{ overflowX: "auto" }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col" style={{ minWidth: "160px" }}>Action</th>
+                    <th scope="col" style={{ minWidth: "160px" }}>User</th>
+                    <th scope="col" style={{ minWidth: "220px" }}>Details / Target</th>
+                    <th scope="col" style={{ minWidth: "130px" }}>IP Address</th>
+                    <th scope="col" style={{ minWidth: "160px" }}>Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedLogs.map((log, idx) => {
+                    const badge = getActionBadge(log.action);
+                    const Icon = badge.icon;
+                    const dateObj = new Date(log.createdAt || log.timestamp || Date.now());
+                    const formattedDate = dateObj.toLocaleDateString("en-IN", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    });
+                    const formattedTime = dateObj.toLocaleTimeString("en-IN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                      hour12: false,
+                    });
 
-                  return (
-                    <tr key={log._id || idx}>
-                      <td>
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "6px",
-                            padding: "4px 10px",
-                            borderRadius: "8px",
-                            fontSize: "12px",
-                            fontWeight: "700",
-                            background: badge.bg,
-                            color: badge.color,
-                            border: `1px solid ${badge.border}`,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <Icon size={13} />
-                          <span>{log.action}</span>
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: "flex", flexDirection: "column" }}>
-                          <strong style={{ fontSize: "13px", color: "var(--text)" }}>
-                            {log.userName || "System"}
-                          </strong>
+                    return (
+                      <tr key={log._id || idx}>
+                        <td>
                           <span
                             style={{
-                              fontSize: "11px",
-                              color: log.userRole === "Admin" ? "var(--purple, #a855f7)" : log.userRole === "Depot Manager" ? "var(--orange)" : "var(--text-dim)",
-                              fontWeight: "600",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              padding: "4px 10px",
+                              borderRadius: "8px",
+                              fontSize: "12px",
+                              fontWeight: "700",
+                              background: badge.bg,
+                              color: badge.color,
+                              border: `1px solid ${badge.border}`,
+                              whiteSpace: "nowrap",
                             }}
                           >
-                            {log.userRole || "Admin"}
+                            <Icon size={13} />
+                            <span>{log.action}</span>
                           </span>
-                        </div>
-                      </td>
-                      <td>
-                        <div style={{ fontSize: "12px", color: "var(--text)", lineHeight: "1.4" }}>
-                          {log.details || log.description || log.entityId || "—"}
-                        </div>
-                      </td>
-                      <td>
-                        <span
-                          style={{
-                            fontFamily: "monospace",
-                            fontSize: "12px",
-                            padding: "3px 8px",
-                            borderRadius: "6px",
-                            background: "var(--panel-alt)",
-                            border: "1px solid var(--line)",
-                            color: "var(--text-dim)",
-                          }}
-                        >
-                          {log.ipAddress && log.ipAddress !== "::1" && log.ipAddress !== "127.0.0.1" ? log.ipAddress : "127.0.0.1"}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--text-dim)" }}>
-                          <Clock size={13} style={{ color: "var(--orange)", flexShrink: 0 }} />
-                          <span>
-                            {formattedDate} • <strong>{formattedTime}</strong>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", flexDirection: "column" }}>
+                            <strong style={{ fontSize: "14px", color: "var(--text)" }}>
+                              {log.userName || "System"}
+                            </strong>
+                            <span
+                              style={{
+                                fontSize: "12.5px",
+                                color: log.userRole === "Admin" ? "var(--purple, #a855f7)" : log.userRole === "Depot Manager" ? "var(--orange)" : "var(--text-dim)",
+                                fontWeight: "600",
+                              }}
+                            >
+                              {log.userRole || "Admin"}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ fontSize: "13.5px", color: "var(--text)", lineHeight: "1.4" }}>
+                            {log.details || log.description || log.entityId || "—"}
+                          </div>
+                        </td>
+                        <td>
+                          <span
+                            style={{
+                              fontFamily: "monospace",
+                              fontSize: "13px",
+                              padding: "3px 8px",
+                              borderRadius: "6px",
+                              background: "var(--panel-alt)",
+                              border: "1px solid var(--line)",
+                              color: "var(--text-dim)",
+                            }}
+                          >
+                            {log.ipAddress && log.ipAddress !== "::1" && log.ipAddress !== "127.0.0.1" ? log.ipAddress : "127.0.0.1"}
                           </span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "var(--text-dim)" }}>
+                            <Clock size={14} style={{ color: "var(--orange)", flexShrink: 0 }} />
+                            <span>
+                              {formattedDate} • <strong>{formattedTime}</strong>
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <Pagination
+              currentPage={clampedPage}
+              totalPages={totalPages}
+              totalRecords={filteredLogs.length}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              pageSizeOptions={[10, 20, 50]}
+            />
+          </>
         )}
       </section>
     </div>

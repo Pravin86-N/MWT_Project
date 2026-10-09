@@ -1,4 +1,5 @@
 const Inventory = require('../models/Inventory');
+const { scopeToDepot } = require('../utils/depotScope');
 
 // @desc    View all depot inventory tanks
 // @route   GET /api/inventory (or GET /api/inventory/tanks)
@@ -6,7 +7,7 @@ const Inventory = require('../models/Inventory');
 const getInventory = async (req, res, next) => {
   try {
     const { fuelType } = req.query;
-    const filter = {};
+    let filter = {};
 
     if (fuelType) {
       filter.$or = [
@@ -14,6 +15,8 @@ const getInventory = async (req, res, next) => {
         { fuelCode: fuelType.toUpperCase() },
       ];
     }
+
+    filter = scopeToDepot(req, filter);
 
     const items = await Inventory.find(filter).sort({ fuelType: 1, fuelCode: 1 });
 
@@ -238,10 +241,14 @@ const requestRefill = async (req, res, next) => {
     if (tankId) {
       item = await Inventory.findOne({ tankId });
     } else if (targetFuel) {
+      const up = targetFuel.toUpperCase();
+      const alias = up === 'HSD' ? 'DSL' : (up === 'MS' ? 'PTL' : (up === 'DSL' ? 'HSD' : (up === 'PTL' ? 'MS' : up)));
       item = await Inventory.findOne({
         $or: [
-          { fuelType: targetFuel.toUpperCase() },
-          { fuelCode: targetFuel.toUpperCase() },
+          { fuelType: up },
+          { fuelCode: up },
+          { fuelType: alias },
+          { fuelCode: alias },
         ],
       });
     }

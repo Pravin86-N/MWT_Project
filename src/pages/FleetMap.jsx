@@ -38,6 +38,8 @@ import { useOrders } from "../context/OrdersContext";
 import { useNotifications } from "../context/NotificationContext";
 import { vehicleApi, driverApi, gpsApi } from "../services/api";
 import { getSocket } from "../services/socket";
+import FuelBadge from "../components/FuelBadge";
+import { playCriticalAlertSound } from "../utils/soundNotifications";
 
 // REAL GPS COORDINATES FOR TAMIL NADU CITIES & DEPOTS
 const DEPOT_LOCATIONS = [
@@ -81,12 +83,13 @@ const DEFAULT_FALLBACK_FLEET = [
     id: "v-1",
     key: "v-1",
     vehicle: "TN-01-FL-1001",
+    depot: "DEP-CHN-01",
     type: "Fuel Tanker 16,000L",
     driver: "Rajesh Kannan",
     phone: "+91 98765 43210",
     status: "Delivering",
     speed: 64,
-    cargo: "12,000 L High Speed Diesel",
+    cargo: "12,000 L Diesel",
     dest: "Metro Fuels Ltd (Salem)",
     eta: "24 mins",
     lat: 12.8342,
@@ -102,6 +105,7 @@ const DEFAULT_FALLBACK_FLEET = [
     id: "v-2",
     key: "v-2",
     vehicle: "TN-38-FL-2002",
+    depot: "DEP-CBE-05",
     type: "Heavy Tanker 20,000L",
     driver: "S. Murugan",
     phone: "+91 98451 23456",
@@ -123,12 +127,13 @@ const DEFAULT_FALLBACK_FLEET = [
     id: "v-3",
     key: "v-3",
     vehicle: "TN-09-FL-3003",
+    depot: "DEP-TRY-04",
     type: "Express Dispenser 8,000L",
     driver: "K. Velu",
     phone: "+91 97123 78901",
     status: "Idle",
     speed: 0,
-    cargo: "8,000 L Premium Petrol",
+    cargo: "8,000 L Petrol",
     dest: "Trichy Fleet Terminal",
     eta: "Standby (Ready for Dispatch)",
     lat: 10.7905,
@@ -144,6 +149,7 @@ const DEFAULT_FALLBACK_FLEET = [
     id: "v-4",
     key: "v-4",
     vehicle: "TN-58-FL-4004",
+    depot: "DEP-MDU-03",
     type: "Rigid Chassis 14,000L",
     driver: "A. Joseph",
     phone: "+91 94432 10987",
@@ -183,31 +189,43 @@ function MapFlyTo({ selectedPos }) {
   return null;
 }
 
-// Custom Leaflet DivIcon Creators for Truck, Depot, and Current Location Markers
+// Section 8: Vehicle marker color mapping:
+// Available: Green (#22C55E)
+// Delivering: Blue (#3B82F6)
+// Dispatched: Amber (#F59E0B)
+// Emergency: Red (#EF4444)
 function createTruckDivIcon(status, isSelected, isEmergency) {
-  let color = "#00B4D8"; // Blue (Returning)
+  let color = "#22C55E"; // Available: Green
   if (isEmergency) {
-    color = "#FF0055"; // Red (Emergency)
+    color = "#EF4444"; // Emergency: Red
   } else if (status === "Delivering") {
-    color = "#FF5E00"; // Orange (Delivering)
-  } else if (status === "Idle") {
-    color = "#F59E0B"; // Amber (Idle)
+    color = "#3B82F6"; // Delivering: Blue
+  } else if (status === "Dispatched" || status === "Returning" || status === "In Transit") {
+    color = "#F59E0B"; // Dispatched: Amber
   } else if (status === "Maintenance") {
-    color = "#EF4444"; // Crimson (Maintenance)
-  } else if (status === "Returning") {
-    color = "#00B4D8"; // Blue (Returning)
+    color = "#EF4444"; // Emergency/Maintenance: Red
+  } else {
+    color = "#22C55E"; // Available/Idle: Green
   }
 
-  const pulseRing = isSelected
-    ? `<circle cx="20" cy="20" r="18" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="4,4" class="leaflet-pulse-ring"/>`
+  // Selected vehicle: Animated ring
+  const selectedRing = isSelected
+    ? `<div style="position: absolute; top: -10px; left: -10px; width: 60px; height: 60px; border-radius: 50%; border: 2px dashed ${color}; animation: step-pulse 1.8s infinite ease-in-out; pointer-events: none;"></div>`
+    : "";
+
+  // GPS pulse around active vehicle marker
+  const isMoving = status === "Delivering" || status === "Dispatched" || isEmergency;
+  const activeGpsPulse = isMoving
+    ? `<div style="position: absolute; top: -6px; left: -6px; width: 52px; height: 52px; border-radius: 50%; background: ${color}25; animation: live-gps-pulse 2s infinite ease-in-out; pointer-events: none;"></div>`
     : "";
 
   const svgHtml = `
-    <div style="position: relative; width: 40px; height: 40px;">
-      <svg width="40" height="40" viewBox="0 0 40 40">
-        ${pulseRing}
+    <div style="position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+      ${activeGpsPulse}
+      ${selectedRing}
+      <svg width="40" height="40" viewBox="0 0 40 40" style="position: relative; z-index: 2;">
         <circle cx="20" cy="20" r="14" fill="${color}" fill-opacity="0.3" />
-        <rect x="8" y="10" width="24" height="20" rx="4" fill="#0B0F19" stroke="${color}" stroke-width="2" />
+        <rect x="8" y="10" width="24" height="20" rx="4" fill="#0F172A" stroke="${color}" stroke-width="2" />
         <rect x="10" y="12" width="20" height="8" rx="2" fill="${color}" />
         <rect x="12" y="22" width="16" height="6" rx="2" fill="#1E293B" stroke="${color}" stroke-width="1" />
       </svg>
@@ -297,6 +315,7 @@ export default function FleetMap() {
   const [reroutedToast, setReroutedToast] = useState("");
   const [tileSource, setTileSource] = useState("osm"); // "osm", "cartoDark"
   const [filterStatus, setFilterStatus] = useState("All");
+  const [depotFilter, setDepotFilter] = useState("ALL");
 
   const [liveSpeeds, setLiveSpeeds] = useState({});
   const [vehicleHistories, setVehicleHistories] = useState({});
@@ -623,6 +642,7 @@ export default function FleetMap() {
         type: v.type || "Fuel Tanker 12,000L",
         driver,
         phone,
+        depot: v.depot || defaultDepot.id || "DEP-CHN-01",
         status: mappedStatus,
         speed,
         cargo,
@@ -671,12 +691,21 @@ export default function FleetMap() {
   }, [isCustomer, orders, user]);
 
   // Vehicles visible according to role permissions:
-  // Driver, Admin, Depot Manager -> see all vehicles
-  // Customer -> ONLY sees assigned delivery vehicle
+  // - Depot Manager -> Scoped strictly to assigned depot
+  // - Admin -> All depots (with interactive filter)
+  // - Customer -> ONLY sees assigned delivery vehicle
   const vehicles = useMemo(() => {
+    let list = allVehicles;
+
+    if (isDepotManager && user?.depot) {
+      list = list.filter((v) => !v.depot || v.depot === user.depot || v.dest?.includes(user.depot));
+    } else if (isAdmin && depotFilter !== "ALL") {
+      list = list.filter((v) => !v.depot || v.depot === depotFilter || v.dest?.includes(depotFilter));
+    }
+
     if (isCustomer) {
       if (customerAssignedVehicle) {
-        const matched = allVehicles.filter(
+        const matched = list.filter(
           (v) =>
             v.vehicle === customerAssignedVehicle ||
             v.id === customerAssignedVehicle ||
@@ -709,10 +738,10 @@ export default function FleetMap() {
         ];
       }
       // If customer has no active orders assigned yet, show single fallback
-      return allVehicles.slice(0, 1);
+      return list.slice(0, 1);
     }
-    return allVehicles;
-  }, [isCustomer, customerAssignedVehicle, allVehicles, liveSpeeds, livePositions, user]);
+    return list;
+  }, [isCustomer, customerAssignedVehicle, allVehicles, liveSpeeds, livePositions, user, isDepotManager, isAdmin, depotFilter]);
 
   // Synchronize selectedVehicle state with vehicles list safely
   useEffect(() => {
@@ -813,6 +842,7 @@ export default function FleetMap() {
   const handleSOS = () => {
     setSosActive(!sosActive);
     if (!sosActive) {
+      playCriticalAlertSound();
       addNotification({
         title: "EMERGENCY SOS ALERT",
         message: `Emergency SOS Alert broadcasted for Tanker ${selectedVehicle?.vehicle || "Fleet"}!`,
@@ -828,20 +858,28 @@ export default function FleetMap() {
     setTimeout(() => setReroutedToast(""), 4000);
   };
 
+  // Section 8 marker color scheme:
+  // Available: Green (#22C55E)
+  // Delivering: Blue (#3B82F6)
+  // Dispatched: Amber (#F59E0B)
+  // Emergency: Red (#EF4444)
   const getMarkerColorHex = (v) => {
-    if (!v) return "#00B4D8";
-    if (sosActive && selectedVehicle?.id === v.id) return "#FF0055";
+    if (!v) return "#22C55E";
+    if (sosActive && selectedVehicle?.id === v.id) return "#EF4444";
     switch (v.status) {
       case "Delivering":
-        return "#FF5E00"; // Orange
+        return "#3B82F6"; // Blue
+      case "Dispatched":
       case "Returning":
-        return "#00B4D8"; // Blue
-      case "Idle":
+      case "In Transit":
         return "#F59E0B"; // Amber
+      case "Emergency":
       case "Maintenance":
         return "#EF4444"; // Red
+      case "Available":
+      case "Idle":
       default:
-        return "#00B4D8";
+        return "#22C55E"; // Green
     }
   };
 
@@ -863,6 +901,51 @@ export default function FleetMap() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          {/* Admin Depot Selector */}
+          {isAdmin && (
+            <select
+              value={depotFilter}
+              onChange={(e) => setDepotFilter(e.target.value)}
+              style={{
+                padding: "8px 14px",
+                borderRadius: "8px",
+                background: "var(--surface, #1e293b)",
+                border: "1px solid var(--line, #334155)",
+                color: "var(--text, #fff)",
+                fontSize: "14px",
+                fontWeight: "600",
+                cursor: "pointer",
+              }}
+            >
+              <option value="ALL">🌐 All Depots (Tamil Nadu HQ)</option>
+              <option value="DEP-CHN-01">🏭 DEP-CHN-01 (Chennai Terminal)</option>
+              <option value="DEP-SLM-02">🏭 DEP-SLM-02 (Salem Hub)</option>
+              <option value="DEP-MDU-03">🏭 DEP-MDU-03 (Madurai Junction)</option>
+              <option value="DEP-TRY-04">🏭 DEP-TRY-04 (Trichy Central)</option>
+              <option value="DEP-CBE-05">🏭 DEP-CBE-05 (Coimbatore Base)</option>
+            </select>
+          )}
+
+          {/* Depot Manager Scoped Jurisdiction Chip */}
+          {isDepotManager && (
+            <span
+              style={{
+                padding: "8px 14px",
+                borderRadius: "8px",
+                background: "rgba(249, 115, 22, 0.15)",
+                border: "1px solid rgba(249, 115, 22, 0.35)",
+                color: "var(--orange, #f97316)",
+                fontSize: "14px",
+                fontWeight: "700",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              🏭 Depot: {user?.depot || "DEP-CHN-01"} Radar (Scoped)
+            </span>
+          )}
+
           {reroutedToast && (
             <span className="toast-inline-success">
               <CheckCircle2 size={15} /> {reroutedToast}
@@ -870,36 +953,12 @@ export default function FleetMap() {
           )}
 
           {trackingError && (
-            <span className="toast-inline-danger" style={{ color: "#EF4444", fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
+            <span className="toast-inline-danger" style={{ color: "#EF4444", fontSize: "13px", display: "flex", alignItems: "center", gap: "4px" }}>
               <AlertTriangle size={14} /> {trackingError}
             </span>
           )}
 
-          {/* DRIVER ROLE ONLY: Start / Stop Tracking Button */}
-          {isDriver && (
-            <button
-              className={`btn-tracking-toggle ${isTracking ? "active" : ""}`}
-              onClick={isTracking ? handleStopTracking : handleStartTracking}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "8px 16px",
-                borderRadius: "8px",
-                fontWeight: "600",
-                fontSize: "13px",
-                cursor: "pointer",
-                background: isTracking ? "#EF4444" : "#10B981",
-                color: "#FFFFFF",
-                border: "none",
-                transition: "all 0.2s ease",
-                boxShadow: isTracking ? "0 0 12px rgba(239, 68, 68, 0.4)" : "0 0 12px rgba(16, 185, 129, 0.4)",
-              }}
-            >
-              {isTracking ? <Square size={14} fill="#FFF" /> : <Play size={14} fill="#FFF" />}
-              {isTracking ? "Stop Tracking" : "Start Tracking"}
-            </button>
-          )}
+
 
           {/* SOS Alert Button */}
           <button
@@ -953,7 +1012,7 @@ export default function FleetMap() {
               minZoom={2}
               worldCopyJump={true}
               zoomControl={true}
-              style={{ width: "100%", height: "100%", minHeight: "480px", borderRadius: "20px", background: "#0B1120" }}
+              style={{ width: "100%", height: "100%", minHeight: "480px", borderRadius: "20px", background: "var(--panel)" }}
             >
               <MapFlyTo
                 selectedPos={
@@ -1017,10 +1076,11 @@ export default function FleetMap() {
                       key={`route-history-${currentVehKey}`}
                       positions={routePts}
                       pathOptions={{
-                        color: "#FF5E00",
-                        weight: 5,
+                        color: "#3B82F6",
+                        weight: 4,
                         opacity: 0.9,
-                        dashArray: "6,6",
+                        dashArray: "8,6",
+                        className: "moving-dash",
                       }}
                     />
                   );
@@ -1036,11 +1096,11 @@ export default function FleetMap() {
                 >
                   <Popup>
                     <div style={{ fontFamily: "system-ui, sans-serif", padding: "6px 8px", color: "#0F172A" }}>
-                      <strong style={{ fontSize: "13px", color: "#00B4D8" }}>📍 Your Current GPS Location</strong>
-                      <div style={{ fontSize: "11px", color: "#475569", marginTop: "4px" }}>
+                      <strong style={{ fontSize: "15px", color: "#3B82F6" }}>📍 Your Current GPS Location</strong>
+                      <div style={{ fontSize: "13px", color: "#475569", marginTop: "4px" }}>
                         Coordinates: {currentLocation[0].toFixed(5)}, {currentLocation[1].toFixed(5)}
                       </div>
-                      <div style={{ fontSize: "11px", color: "#10B981", fontWeight: "600", marginTop: "2px" }}>
+                      <div style={{ fontSize: "13px", color: "#22C55E", fontWeight: "600", marginTop: "2px" }}>
                         Speed: {trackingSpeed} km/h • Heading: {trackingHeading}°
                       </div>
                     </div>
@@ -1064,18 +1124,22 @@ export default function FleetMap() {
                   >
                     {/* POPUP INFORMATION: VEHICLE AND DRIVER DETAILS */}
                     <Popup>
-                      <div style={{ fontFamily: "system-ui, sans-serif", padding: "8px", minWidth: "250px", color: "#0F172A" }}>
+                      <div style={{ fontFamily: "system-ui, sans-serif", padding: "8px", minWidth: "260px", color: "#0F172A" }}>
                         {/* Vehicle Header */}
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", borderBottom: "1px solid #E2E8F0", paddingBottom: "6px" }}>
-                          <strong style={{ fontSize: "14px", color: "#FF5E00" }}>🚛 {v.vehicle}</strong>
+                          <strong style={{ fontSize: "15px", color: getMarkerColorHex(v) }}>🚛 {v.vehicle}</strong>
                           <span
                             style={{
-                              fontSize: "10px",
+                              fontSize: "12px",
                               fontWeight: "700",
-                              padding: "2px 6px",
-                              borderRadius: "4px",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
                               backgroundColor: `${getMarkerColorHex(v)}20`,
                               color: getMarkerColorHex(v),
+                              border: `1px solid ${getMarkerColorHex(v)}40`,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
                             }}
                           >
                             ● {v.status}
@@ -1084,29 +1148,32 @@ export default function FleetMap() {
 
                         {/* DRIVER DETAILS POPUP SECTION */}
                         <div style={{ background: "#F8FAFC", padding: "6px 8px", borderRadius: "6px", marginBottom: "8px" }}>
-                          <div style={{ fontSize: "10px", fontWeight: "700", color: "#64748B", textTransform: "uppercase", marginBottom: "2px" }}>
+                          <div style={{ fontSize: "12px", fontWeight: "700", color: "#64748B", textTransform: "uppercase", marginBottom: "2px" }}>
                             Driver Details
                           </div>
-                          <div style={{ fontSize: "12px", fontWeight: "600", color: "#1E293B" }}>
+                          <div style={{ fontSize: "14.5px", fontWeight: "600", color: "#1E293B" }}>
                             👨‍✈️ {v.driver}
                           </div>
-                          <div style={{ fontSize: "11px", color: "#475569", marginTop: "2px" }}>
-                            📞 <a href={`tel:${v.phone || "+919876543210"}`} style={{ color: "#FF5E00", textDecoration: "none", fontWeight: "600" }}>{v.phone || "+91 98765 43210"}</a>
+                          <div style={{ fontSize: "13.5px", color: "#475569", marginTop: "2px" }}>
+                            📞 <a href={`tel:${v.phone || "+919876543210"}`} style={{ color: "var(--fuel-electric, #3B82F6)", textDecoration: "none", fontWeight: "600" }}>{v.phone || "+91 98765 43210"}</a>
                           </div>
-                          <div style={{ fontSize: "10px", color: "#10B981", marginTop: "2px", fontWeight: "600" }}>
+                          <div style={{ fontSize: "13px", color: "#22C55E", marginTop: "2px", fontWeight: "600" }}>
                             ● Active On Shift • ⭐ 4.9 Rating
                           </div>
                         </div>
 
                         {/* VEHICLE DETAILS POPUP SECTION */}
-                        <div style={{ fontSize: "11px", display: "flex", flexDirection: "column", gap: "3px", color: "#334155" }}>
+                        <div style={{ fontSize: "13.5px", display: "flex", flexDirection: "column", gap: "5px", color: "#334155" }}>
                           <div><strong>Type:</strong> {v.type}</div>
-                          <div><strong>Speed:</strong> <span style={{ color: v.speed > 0 ? "#10B981" : "#64748B", fontWeight: "700" }}>{v.speed} km/h</span></div>
+                          <div><strong>Speed:</strong> <span style={{ color: v.speed > 0 ? "#22C55E" : "#64748B", fontWeight: "700" }}>{v.speed} km/h</span></div>
                           <div><strong>Coordinates:</strong> {Number(v.lat).toFixed(4)}, {Number(v.lng).toFixed(4)}</div>
-                          <div><strong>Cargo:</strong> {v.cargo}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                            <strong>Cargo:</strong>
+                            <FuelBadge fuelType={v.cargo || "Diesel"} label={v.cargo || "Diesel"} />
+                          </div>
                           <div><strong>Fuel Level:</strong> {v.fuelLevel}%</div>
                           <div><strong>Destination:</strong> {v.dest}</div>
-                          <div style={{ color: "#FF5E00", fontWeight: "700", marginTop: "2px" }}><strong>ETA:</strong> {v.eta}</div>
+                          <div style={{ color: "var(--fuel-electric, #3B82F6)", fontWeight: "700" }}><strong>ETA:</strong> {v.eta}</div>
                         </div>
                       </div>
                     </Popup>
@@ -1119,14 +1186,14 @@ export default function FleetMap() {
           {/* Map Legend Bar */}
           <div className="map-bottom-legend">
             <div className="legend-status-items">
-              <span className="legend-item"><span className="legend-dot" style={{ backgroundColor: "#FF5E00" }}></span> 🟧 Orange = Delivering</span>
-              <span className="legend-item"><span className="legend-dot" style={{ backgroundColor: "#00B4D8" }}></span> 🔵 Blue = Returning</span>
-              <span className="legend-item"><span className="legend-dot" style={{ backgroundColor: "#F59E0B" }}></span> 🟡 Amber = Idle</span>
-              <span className="legend-item"><span className="legend-dot" style={{ backgroundColor: "#EF4444" }}></span> 🔴 Red = Maintenance</span>
+              <span className="legend-item"><span className="legend-dot" style={{ backgroundColor: "#22C55E" }}></span> 🟢 Green = Available</span>
+              <span className="legend-item"><span className="legend-dot" style={{ backgroundColor: "#3B82F6" }}></span> 🔵 Blue = Delivering</span>
+              <span className="legend-item"><span className="legend-dot" style={{ backgroundColor: "#F59E0B" }}></span> 🟡 Amber = Dispatched</span>
+              <span className="legend-item"><span className="legend-dot" style={{ backgroundColor: "#EF4444" }}></span> 🔴 Red = Emergency</span>
             </div>
             <div className="legend-meta">
               <span>OpenStreetMap Engine: <strong>React Leaflet 4.2.1</strong></span>
-              <span>Telemetry Ping: <strong style={{ color: "var(--green-neon)" }}>5s Live GPS</strong></span>
+              <span>Telemetry Ping: <strong style={{ color: "var(--status-success, #22C55E)" }}>5s Live GPS</strong></span>
             </div>
           </div>
         </div>
@@ -1136,7 +1203,7 @@ export default function FleetMap() {
             ========================================================================= */}
         <div className="real-telemetry-25-panel">
           <div className="panel-header-badge">
-            <Radio size={16} style={{ color: "var(--orange)" }} />
+            <Radio size={16} style={{ color: "var(--fuel-electric, #3B82F6)" }} />
             <span>TELEMETRY DIAGNOSTICS</span>
           </div>
 
@@ -1152,12 +1219,15 @@ export default function FleetMap() {
                       backgroundColor: `${getMarkerColorHex(selectedVehicle)}20`,
                       color: getMarkerColorHex(selectedVehicle),
                       border: `1px solid ${getMarkerColorHex(selectedVehicle)}50`,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
                     }}
                   >
                     ● {selectedVehicle.status?.toUpperCase() || "ACTIVE"}
                   </span>
                 </div>
-                <div style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "4px" }}>
+                <div style={{ fontSize: "14px", color: "var(--text-dim)", marginTop: "4px" }}>
                   Destination: <strong style={{ color: "var(--text)" }}>{selectedVehicle.dest || "In Transit"}</strong>
                 </div>
               </div>
@@ -1166,12 +1236,12 @@ export default function FleetMap() {
               <div className="tel-card-box driver-profile-box">
                 <div className="driver-avatar-wrapper">
                   <div className="avatar-placeholder">
-                    <User size={22} style={{ color: "var(--orange)" }} />
+                    <User size={22} style={{ color: "var(--fuel-diesel, #F59E0B)" }} />
                   </div>
                   <div>
-                    <strong style={{ fontSize: "15px", color: "var(--text)" }}>{selectedVehicle.driver || "Driver"}</strong>
-                    <div style={{ fontSize: "12px", color: "var(--text-dim)" }}>{selectedVehicle.phone || "+91 98765 43210"}</div>
-                    <div style={{ fontSize: "11px", color: "var(--green-neon)", fontWeight: "700", marginTop: "2px" }}>
+                    <strong style={{ fontSize: "16px", color: "var(--text)" }}>{selectedVehicle.driver || "Driver"}</strong>
+                    <div style={{ fontSize: "14px", color: "var(--text-dim)" }}>{selectedVehicle.phone || "+91 98765 43210"}</div>
+                    <div style={{ fontSize: "13px", color: "var(--status-success, #22C55E)", fontWeight: "700", marginTop: "2px" }}>
                       ✓ Verified On-Duty Driver
                     </div>
                   </div>
@@ -1186,60 +1256,60 @@ export default function FleetMap() {
               <div className="tel-metrics-grid">
                 <div className="tel-metric-item">
                   <div className="metric-head">
-                    <Gauge size={15} style={{ color: "var(--orange)" }} />
+                    <Gauge size={15} style={{ color: "var(--fuel-diesel, #F59E0B)" }} />
                     <span>Current Speed</span>
                   </div>
-                  <strong className="metric-val" style={{ color: "var(--orange)" }}>
+                  <strong className="metric-val" style={{ color: "var(--fuel-diesel, #F59E0B)" }}>
                     {selectedVehicle.speed ?? 0} <small>km/h</small>
                   </strong>
                 </div>
 
                 <div className="tel-metric-item">
                   <div className="metric-head">
-                    <Fuel size={15} style={{ color: "var(--blue)" }} />
+                    <Fuel size={15} style={{ color: "var(--fuel-electric, #3B82F6)" }} />
                     <span>Fuel Tank Level</span>
                   </div>
-                  <strong className="metric-val" style={{ color: "var(--blue)" }}>
+                  <strong className="metric-val" style={{ color: "var(--fuel-electric, #3B82F6)" }}>
                     {selectedVehicle.fuelLevel ?? 80}% <small>Tank</small>
                   </strong>
                 </div>
 
                 <div className="tel-metric-item">
                   <div className="metric-head">
-                    <Thermometer size={15} style={{ color: "var(--amber)" }} />
+                    <Thermometer size={15} style={{ color: "var(--fuel-diesel, #F59E0B)" }} />
                     <span>Engine Temp</span>
                   </div>
-                  <strong className="metric-val" style={{ color: "var(--amber)" }}>
+                  <strong className="metric-val" style={{ color: "var(--fuel-diesel, #F59E0B)" }}>
                     {selectedVehicle.engineTemp ?? 82}°C
                   </strong>
                 </div>
 
                 <div className="tel-metric-item">
                   <div className="metric-head">
-                    <Shield size={15} style={{ color: "var(--green-neon)" }} />
+                    <Shield size={15} style={{ color: "var(--status-success, #22C55E)" }} />
                     <span>Tyre Pressure</span>
                   </div>
-                  <strong className="metric-val" style={{ color: "var(--green-neon)" }}>
+                  <strong className="metric-val" style={{ color: "var(--status-success, #22C55E)" }}>
                     {selectedVehicle.tirePressure ?? 33} <small>PSI</small>
                   </strong>
                 </div>
 
                 <div className="tel-metric-item">
                   <div className="metric-head">
-                    <Wifi size={15} style={{ color: "var(--green-neon)" }} />
+                    <Wifi size={15} style={{ color: "var(--status-success, #22C55E)" }} />
                     <span>GPS Signal</span>
                   </div>
-                  <strong className="metric-val" style={{ color: "var(--green-neon)" }}>
+                  <strong className="metric-val" style={{ color: "var(--status-success, #22C55E)" }}>
                     {selectedVehicle.gpsSignal || "5G 99%"}
                   </strong>
                 </div>
 
                 <div className="tel-metric-item">
                   <div className="metric-head">
-                    <Battery size={15} style={{ color: "var(--green-neon)" }} />
+                    <Battery size={15} style={{ color: "var(--status-success, #22C55E)" }} />
                     <span>Battery Status</span>
                   </div>
-                  <strong className="metric-val" style={{ color: "var(--green-neon)" }}>
+                  <strong className="metric-val" style={{ color: "var(--status-success, #22C55E)" }}>
                     {selectedVehicle.batteryStatus || "100%"}
                   </strong>
                 </div>
@@ -1248,15 +1318,15 @@ export default function FleetMap() {
               {/* Cargo & Navigation Overview */}
               <div className="tel-card-box">
                 <div className="tel-box-title">
-                  <Navigation size={14} style={{ color: "var(--orange)" }} /> Active Trip Navigation
+                  <Navigation size={14} style={{ color: "var(--fuel-electric, #3B82F6)" }} /> Active Trip Navigation
                 </div>
-                <div className="tel-info-row">
+                <div className="tel-info-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
                   <span>Current Cargo:</span>
-                  <strong style={{ color: "var(--orange)" }}>{selectedVehicle.cargo || "High Speed Diesel"}</strong>
+                  <FuelBadge fuelType={selectedVehicle.cargo || "Diesel"} label={selectedVehicle.cargo || "Diesel"} />
                 </div>
                 <div className="tel-info-row">
                   <span>Coordinates:</span>
-                  <strong style={{ fontSize: "11px" }}>{Number(selectedVehicle.lat).toFixed(4)}, {Number(selectedVehicle.lng).toFixed(4)}</strong>
+                  <strong style={{ fontSize: "13px" }}>{Number(selectedVehicle.lat).toFixed(4)}, {Number(selectedVehicle.lng).toFixed(4)}</strong>
                 </div>
                 <div className="tel-info-row">
                   <span>Estimated Arrival (ETA):</span>
@@ -1279,7 +1349,7 @@ export default function FleetMap() {
       {/* ACTIVE VEHICLES MANIFEST CARDS LIST (BELOW MAP) */}
       <div className="active-manifest-section">
         <div className="manifest-header">
-          <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "700" }}>
+          <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "700" }}>
             {isCustomer ? "Assigned Delivery Vehicle Manifest" : "Active Fleet Telemetry Manifest"}
           </h3>
           <div className="pill-filter-bar">

@@ -16,14 +16,38 @@ const getNotifications = async (req, res, next) => {
       filter.read = false;
     }
 
-    const notifications = await Notification.find(filter)
-      .sort({ createdAt: -1 })
-      .limit(Number(limit));
+    const pageNum = parseInt(req.query.page, 10);
+    const limitNum = parseInt(limit, 10) || 50;
 
+    const totalRecords = await Notification.countDocuments(filter);
     const unreadCount = await Notification.countDocuments({
       ...filter,
       read: false,
     });
+
+    let notifications;
+    if (pageNum) {
+      const skip = (pageNum - 1) * limitNum;
+      notifications = await Notification.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum);
+
+      return res.status(200).json({
+        success: true,
+        data: notifications,
+        page: pageNum,
+        limit: limitNum,
+        totalRecords,
+        totalPages: Math.ceil(totalRecords / limitNum) || 1,
+        count: notifications.length,
+        unreadCount,
+      });
+    }
+
+    notifications = await Notification.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(limitNum);
 
     res.status(200).json({
       success: true,

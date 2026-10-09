@@ -13,6 +13,29 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "0.0.0.0",
       port: 5173,
+      watch: {
+        ignored: ["**/report_builder/**", "**/report_assets/**", "**/chrome_profile/**"],
+      },
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes("node_modules")) {
+              if (id.includes("leaflet") || id.includes("react-leaflet")) {
+                return "vendor-maps";
+              }
+              if (id.includes("lucide-react")) {
+                return "vendor-icons";
+              }
+              if (id.includes("react") || id.includes("react-dom") || id.includes("react-router-dom")) {
+                return "vendor-react";
+              }
+            }
+          },
+        },
+      },
+      chunkSizeWarningLimit: 600,
     },
   };
 });

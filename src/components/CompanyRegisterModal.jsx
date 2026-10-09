@@ -315,10 +315,10 @@ export default function CompanyRegisterModal({ open, onClose }) {
               <Building2 size={22} />
             </div>
             <div>
-              <h3 style={{ margin: 0, fontSize: "20px", fontWeight: "800", color: "var(--text)" }}>
+              <h3 style={{ margin: 0, fontSize: "22px", fontWeight: "800", color: "var(--text)" }}>
                 Corporate Fuel Customer Registration
               </h3>
-              <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--text-dim)" }}>
+              <p style={{ margin: "2px 0 0", fontSize: "14px", color: "var(--text-dim)" }}>
                 B2B Onboarding • Enterprise Logistics Account Verification
               </p>
             </div>
@@ -438,7 +438,7 @@ export default function CompanyRegisterModal({ open, onClose }) {
                 return (
                   <div key={st.num} className={`tracker-step-node ${isDone ? "completed" : ""} ${isCurrent ? "active" : ""}`}>
                     <div className="tracker-node-circle">{isDone ? <Check size={14} /> : st.num}</div>
-                    <span style={{ fontSize: "11px", fontWeight: "700", color: isCurrent ? "var(--orange)" : isDone ? "var(--green-neon)" : "var(--text-dim)" }}>
+                    <span style={{ fontSize: "12px", fontWeight: "700", color: isCurrent ? "var(--orange)" : isDone ? "var(--green-neon)" : "var(--text-dim)" }}>
                       {st.label}
                     </span>
                   </div>
@@ -451,7 +451,7 @@ export default function CompanyRegisterModal({ open, onClose }) {
                 ========================================================================= */}
             {step === 1 && (
               <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                <h4 style={{ margin: 0, fontSize: "15px", color: "var(--orange)", fontWeight: "800" }}>
+                <h4 style={{ margin: 0, fontSize: "17px", color: "var(--orange)", fontWeight: "800" }}>
                   Step 1: Primary Company Details
                 </h4>
 
@@ -466,12 +466,19 @@ export default function CompanyRegisterModal({ open, onClose }) {
                       placeholder="e.g. TamilNadu Industrial Corp Ltd"
                       className="input"
                     />
-                    {errors.companyName && <small style={{ color: "var(--red)", fontSize: "11px" }}>{errors.companyName}</small>}
+                    {errors.companyName && <small style={{ color: "var(--red)", fontSize: "13px" }}>{errors.companyName}</small>}
                   </div>
 
                   <div className="input-wrapper">
-                    <span className="input-label">Business Sector / Type</span>
-                    <select name="businessType" value={formData.businessType} onChange={handleChange} className="input">
+                    <label htmlFor="reg-businessType" className="input-label">Business Sector / Type</label>
+                    <select
+                      id="reg-businessType"
+                      name="businessType"
+                      value={formData.businessType}
+                      onChange={handleChange}
+                      className="input"
+                      aria-label="Business Sector / Type"
+                    >
                       <option value="Manufacturing">Manufacturing & Factories</option>
                       <option value="Healthcare">Healthcare & Hospitals</option>
                       <option value="Logistics">Logistics & Fleet Fleet Depot</option>
@@ -491,7 +498,7 @@ export default function CompanyRegisterModal({ open, onClose }) {
                       placeholder="e.g. R. Subramanian"
                       className="input"
                     />
-                    {errors.contactPerson && <small style={{ color: "var(--red)", fontSize: "11px" }}>{errors.contactPerson}</small>}
+                    {errors.contactPerson && <small style={{ color: "var(--red)", fontSize: "13px" }}>{errors.contactPerson}</small>}
                   </div>
 
                   <div className="input-wrapper">
@@ -516,7 +523,7 @@ export default function CompanyRegisterModal({ open, onClose }) {
                       placeholder="9876543210"
                       className="input"
                     />
-                    {errors.mobile && <small style={{ color: "var(--red)", fontSize: "11px" }}>{errors.mobile}</small>}
+                    {errors.mobile && <small style={{ color: "var(--red)", fontSize: "13px" }}>{errors.mobile}</small>}
                   </div>
 
                   <div className="input-wrapper">
@@ -529,7 +536,7 @@ export default function CompanyRegisterModal({ open, onClose }) {
                       placeholder="procurement@tncorp.com"
                       className="input"
                     />
-                    {errors.email && <small style={{ color: "var(--red)", fontSize: "11px" }}>{errors.email}</small>}
+                    {errors.email && <small style={{ color: "var(--red)", fontSize: "13px" }}>{errors.email}</small>}
                   </div>
 
                   <div className="input-wrapper">
@@ -542,7 +549,7 @@ export default function CompanyRegisterModal({ open, onClose }) {
                       placeholder="••••••••"
                       className="input"
                     />
-                    {errors.password && <small style={{ color: "var(--red)", fontSize: "11px" }}>{errors.password}</small>}
+                    {errors.password && <small style={{ color: "var(--red)", fontSize: "13px" }}>{errors.password}</small>}
                   </div>
 
                   <div className="input-wrapper">
@@ -555,7 +562,7 @@ export default function CompanyRegisterModal({ open, onClose }) {
                       placeholder="••••••••"
                       className="input"
                     />
-                    {errors.confirmPassword && <small style={{ color: "var(--red)", fontSize: "11px" }}>{errors.confirmPassword}</small>}
+                    {errors.confirmPassword && <small style={{ color: "var(--red)", fontSize: "13px" }}>{errors.confirmPassword}</small>}
                   </div>
 
                   <div className="input-wrapper">
@@ -605,7 +612,7 @@ export default function CompanyRegisterModal({ open, onClose }) {
                       placeholder="Plot 42, SIDCO Industrial Estate"
                       className="input"
                     />
-                    {errors.address1 && <small style={{ color: "var(--red)", fontSize: "11px" }}>{errors.address1}</small>}
+                    {errors.address1 && <small style={{ color: "var(--red)", fontSize: "13px" }}>{errors.address1}</small>}
                   </div>
 
                   <div className="input-wrapper">
@@ -645,7 +652,7 @@ export default function CompanyRegisterModal({ open, onClose }) {
                 <div style={{ marginTop: "10px" }}>
                   <label className="input-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span>📍 Click on Map to Pin Exact Fuel Tanker Discharge Site</span>
-                    <span style={{ color: "var(--orange)", fontSize: "11px", fontWeight: "700" }}>
+                    <span style={{ color: "var(--orange)", fontSize: "12px", fontWeight: "700" }}>
                       GPS: {mapPos[0].toFixed(4)}, {mapPos[1].toFixed(4)}
                     </span>
                   </label>
@@ -703,8 +710,8 @@ export default function CompanyRegisterModal({ open, onClose }) {
                       placeholder="e.g. 33AAAAA0000A1Z5"
                       className="input"
                     />
-                    {errors.gstNumber && <small style={{ color: "var(--red)", fontSize: "11px" }}>{errors.gstNumber}</small>}
-                    <small style={{ color: "var(--text-dim)", fontSize: "11px" }}>Required for B2B GST Tax Credit Invoicing</small>
+                    {errors.gstNumber && <small style={{ color: "var(--red)", fontSize: "13px" }}>{errors.gstNumber}</small>}
+                    <small style={{ color: "var(--text-dim)", fontSize: "13px" }}>Required for B2B GST Tax Credit Invoicing</small>
                   </div>
 
                   <div className="input-wrapper">
@@ -718,8 +725,8 @@ export default function CompanyRegisterModal({ open, onClose }) {
                       placeholder="e.g. ABCDE1234F"
                       className="input"
                     />
-                    {errors.panNumber && <small style={{ color: "var(--red)", fontSize: "11px" }}>{errors.panNumber}</small>}
-                    <small style={{ color: "var(--text-dim)", fontSize: "11px" }}>Permanent Account Number of Company</small>
+                    {errors.panNumber && <small style={{ color: "var(--red)", fontSize: "13px" }}>{errors.panNumber}</small>}
+                    <small style={{ color: "var(--text-dim)", fontSize: "13px" }}>Permanent Account Number of Company</small>
                   </div>
 
                   <div className="input-wrapper">
@@ -732,7 +739,7 @@ export default function CompanyRegisterModal({ open, onClose }) {
                       placeholder="e.g. U74999TN2018PTC123456"
                       className="input"
                     />
-                    {errors.companyRegNo && <small style={{ color: "var(--red)", fontSize: "11px" }}>{errors.companyRegNo}</small>}
+                    {errors.companyRegNo && <small style={{ color: "var(--red)", fontSize: "13px" }}>{errors.companyRegNo}</small>}
                   </div>
 
                   <div className="input-wrapper">
@@ -788,8 +795,8 @@ export default function CompanyRegisterModal({ open, onClose }) {
                         }}
                       >
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <strong style={{ fontSize: "12px", color: "var(--text)" }}>{doc.label}</strong>
-                          {uploaded && <span style={{ fontSize: "10px", color: "var(--green-neon)", fontWeight: "800" }}>✓ UPLOADED</span>}
+                          <strong style={{ fontSize: "14px", color: "var(--text)" }}>{doc.label}</strong>
+                          {uploaded && <span style={{ fontSize: "12px", color: "var(--green-neon)", fontWeight: "800" }}>✓ UPLOADED</span>}
                         </div>
 
                         {uploaded ? (
@@ -807,8 +814,8 @@ export default function CompanyRegisterModal({ open, onClose }) {
                             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                               <FileText size={18} style={{ color: "var(--orange)" }} />
                               <div>
-                                <div style={{ fontSize: "12px", fontWeight: "700", color: "var(--text)" }}>{uploaded.name}</div>
-                                <div style={{ fontSize: "10px", color: "var(--text-dim)" }}>{uploaded.size} • {uploaded.uploadedAt}</div>
+                                <div style={{ fontSize: "13px", fontWeight: "700", color: "var(--text)" }}>{uploaded.name}</div>
+                                <div style={{ fontSize: "12px", color: "var(--text-dim)" }}>{uploaded.size} • {uploaded.uploadedAt}</div>
                               </div>
                             </div>
                             <button className="icon-btn" onClick={() => handleRemoveDoc(doc.key)} title="Remove File">
@@ -831,7 +838,7 @@ export default function CompanyRegisterModal({ open, onClose }) {
                               }}
                             >
                               <UploadCloud size={22} style={{ color: "var(--orange)" }} />
-                              <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Drag & Drop or Click to Browse PDF/JPG</span>
+                              <span style={{ fontSize: "13px", color: "var(--text-dim)" }}>Drag & Drop or Click to Browse PDF/JPG</span>
                               <input
                                 type="file"
                                 accept=".pdf,.jpg,.jpeg,.png"
@@ -846,7 +853,7 @@ export default function CompanyRegisterModal({ open, onClose }) {
                             )}
                           </div>
                         )}
-                        {errors[doc.key] && <small style={{ color: "var(--red)", fontSize: "11px" }}>{errors[doc.key]}</small>}
+                        {errors[doc.key] && <small style={{ color: "var(--red)", fontSize: "13px" }}>{errors[doc.key]}</small>}
                       </div>
                     );
                   })}
@@ -865,8 +872,15 @@ export default function CompanyRegisterModal({ open, onClose }) {
 
                 <div className="input-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                   <div className="input-wrapper">
-                    <span className="input-label">Primary Fuel Type Required</span>
-                    <select name="fuelType" value={formData.fuelType} onChange={handleChange} className="input">
+                    <label htmlFor="reg-fuelType" className="input-label">Primary Fuel Type Required</label>
+                    <select
+                      id="reg-fuelType"
+                      name="fuelType"
+                      value={formData.fuelType}
+                      onChange={handleChange}
+                      className="input"
+                      aria-label="Primary Fuel Type Required"
+                    >
                       <option value="DSL">High Speed Diesel (DSL)</option>
                       <option value="MS">Motor Spirit Petrol (MS)</option>
                       <option value="LSHS">Low Sulfur Heavy Stock (LSHS)</option>
@@ -896,8 +910,15 @@ export default function CompanyRegisterModal({ open, onClose }) {
                   </div>
 
                   <div className="input-wrapper">
-                    <span className="input-label">Preferred Delivery Slot Timing</span>
-                    <select name="preferredTiming" value={formData.preferredTiming} onChange={handleChange} className="input">
+                    <label htmlFor="reg-preferredTiming" className="input-label">Preferred Delivery Slot Timing</label>
+                    <select
+                      id="reg-preferredTiming"
+                      name="preferredTiming"
+                      value={formData.preferredTiming}
+                      onChange={handleChange}
+                      className="input"
+                      aria-label="Preferred Delivery Slot Timing"
+                    >
                       <option value="Morning (06:00 - 10:00 AM)">Morning Slot (06:00 AM - 10:00 AM)</option>
                       <option value="Afternoon (12:00 - 04:00 PM)">Afternoon Slot (12:00 PM - 04:00 PM)</option>
                       <option value="Night Shift (10:00 PM - 02:00 AM)">Night Shift Slot (10:00 PM - 02:00 AM)</option>
@@ -928,7 +949,7 @@ export default function CompanyRegisterModal({ open, onClose }) {
                     gap: "14px",
                   }}
                 >
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "13px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "14px" }}>
                     <div>
                       <span style={{ color: "var(--text-dim)", display: "block" }}>Company Legal Name</span>
                       <strong style={{ color: "var(--text)" }}>{formData.companyName}</strong> ({formData.businessType})
@@ -956,13 +977,13 @@ export default function CompanyRegisterModal({ open, onClose }) {
                   </div>
 
                   <div style={{ borderTop: "1px dashed var(--line)", paddingTop: "12px" }}>
-                    <span style={{ color: "var(--text-dim)", fontSize: "12px", display: "block", marginBottom: "6px" }}>
+                    <span style={{ color: "var(--text-dim)", fontSize: "13px", display: "block", marginBottom: "6px" }}>
                       Uploaded Document Dossier:
                     </span>
                     <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                       {Object.keys(documents).map((k) => (
                         documents[k] && (
-                          <span key={k} className="badge-tag tag-normal" style={{ fontSize: "11px" }}>
+                          <span key={k} className="badge-tag tag-normal" style={{ fontSize: "12px" }}>
                             <FileText size={12} /> {documents[k].name}
                           </span>
                         )

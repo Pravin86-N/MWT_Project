@@ -232,6 +232,36 @@ export const authApi = {
     return response.data;
   },
 
+  // Update user role (Admin only)
+  updateUserRole: async (userId, role) => {
+    const response = await api.patch(`/auth/users/${userId}/role`, { role });
+    return response.data;
+  },
+
+  // Update user depot (Admin only)
+  updateUserDepot: async (userId, depot) => {
+    const response = await api.patch(`/auth/users/${userId}/depot`, { depot });
+    return response.data;
+  },
+
+  // Update user status & active flag (Admin only)
+  updateUserStatus: async (userId, status, isActive) => {
+    const response = await api.patch(`/auth/users/${userId}/status`, { status, isActive });
+    return response.data;
+  },
+
+  // Update user profile/depot/role directly (Admin only)
+  updateUserAdmin: async (userId, userData) => {
+    const response = await api.put(`/auth/users/${userId}`, userData);
+    return response.data;
+  },
+
+  // Delete user (Admin only)
+  deleteUser: async (userId) => {
+    const response = await api.delete(`/auth/users/${userId}`);
+    return response.data;
+  },
+
   // Update profile
   updateProfile: async (profileData) => {
     const response = await api.put("/auth/profile", profileData);
@@ -770,13 +800,13 @@ export const reportApi = {
     return response.data;
   },
   // Fetch reports dashboard with tables and KPIs
-  getDashboardReports: async () => {
-    const response = await api.get("/reports/dashboard");
+  getDashboardReports: async (params = {}) => {
+    const response = await api.get("/reports/dashboard", { params });
     return response.data;
   },
   // Fetch summary metrics
-  getReportsSummary: async () => {
-    const response = await api.get("/reports/summary");
+  getReportsSummary: async (params = {}) => {
+    const response = await api.get("/reports/summary", { params });
     return response.data;
   },
 };
@@ -787,6 +817,24 @@ export const reportApi = {
 export const activityApi = {
   getActivities: async (params = {}) => {
     const response = await api.get("/activities", { params });
+    return response.data;
+  },
+};
+
+/* ==========================================================================
+   11. FUEL PRICING SERVICES
+   ========================================================================== */
+export const pricingApi = {
+  getFuelPrices: async () => {
+    const response = await api.get("/pricing");
+    return response.data;
+  },
+  updateFuelPrice: async (code, data) => {
+    const response = await api.put(`/pricing/${code}`, data);
+    return response.data;
+  },
+  calculateQuote: async (fuelCode, qty) => {
+    const response = await api.post("/pricing/calculate", { fuelCode, qty });
     return response.data;
   },
 };

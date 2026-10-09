@@ -15,6 +15,17 @@ import {
   Phone,
   Shield,
   X,
+  Radio,
+  Navigation,
+  Sparkles,
+  Activity,
+  Gauge,
+  Zap,
+  CheckCircle2,
+  UserCheck,
+  Flame,
+  Droplets,
+  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
@@ -51,6 +62,35 @@ export default function Login() {
   const [otpTimer, setOtpTimer] = useState(0); // 5 minutes (300 seconds)
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpMessage, setOtpMessage] = useState({ type: "", text: "", preview: "" });
+
+  // 3D Perspective Tilt & Moving Truck State
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const [isMoving, setIsMoving] = useState(true);
+  const [cruiseSpeed, setCruiseSpeed] = useState(65);
+
+  const handleMouseMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width - 0.5) * 10;
+    const y = ((e.clientY - rect.top) / rect.height - 0.5) * -10;
+    setTilt({ x: y, y: x });
+  };
+  const handleMouseLeave = () => {
+    setTilt({ x: 0, y: 0 });
+  };
+
+  // Quick Demo Access Accounts (Exact Match to Reference UI)
+  const demoRoles = [
+    { role: "Admin", email: "admin@fdms.com", pass: "admin123", label: "Admin", badge: "All Depots" },
+    { role: "Depot Manager", email: "coimbatore.mgr@fdms.com", pass: "manager123", label: "Manager", badge: "Coordinator" },
+    { role: "Driver", email: "driver@fdms.com", pass: "driver123", label: "Driver", badge: "Fleet A" },
+    { role: "Customer", email: "customer@fdms.com", pass: "customer123", label: "Customer", badge: "Steel Works" },
+  ];
+
+  const handleSelectDemoRole = (d) => {
+    setEmail(d.email);
+    setPassword(d.pass);
+    setLoginError("");
+  };
 
   const emailRef = useRef(null);
 
@@ -263,11 +303,12 @@ export default function Login() {
   };
 
   return (
-    <div className="saas-auth-page">
+    <main className="saas-auth-page">
       {/* Top Floating Theme Switcher */}
       <button
         className="icon-btn theme-fab"
         onClick={toggleTheme}
+        aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
         title={t("toggleTheme")}
         style={{
           position: "fixed",
@@ -282,147 +323,287 @@ export default function Login() {
 
       <div className="saas-auth-container">
         {/* ==========================================
-            LEFT COLUMN (55% Width Feature & Graphics)
+            LEFT COLUMN: BRAND, 3D MOVING TRUCK & TELEMETRY
            ========================================== */}
         <div className="saas-auth-left">
           <div className="saas-brand-header">
-            <div className="saas-brand-badge">
-              <div className="saas-brand-icon">
-                <Fuel size={28} />
+            {/* Top Brand Logo & App Name Badge */}
+            <div className="fdms-top-brand">
+              <div className="fdms-top-logo-badge">
+                <Fuel size={22} />
               </div>
-              <span
-                style={{
-                  fontSize: "12px",
-                  fontWeight: "800",
-                  color: "var(--orange)",
-                  letterSpacing: "0.15em",
-                  textTransform: "uppercase",
-                }}
-              >
-                FDMS LOGISTICS PLATFORM
-              </span>
+              <div className="fdms-top-brand-text">
+                <span className="fdms-brand-name">FDMS SAAS</span>
+                <span className="fdms-brand-subtitle">LIVE FLEET TELEMETRY</span>
+              </div>
             </div>
-            <h1 className="saas-brand-title">Smart Fuel Dispatch & Fleet Telemetry System</h1>
-            <p className="saas-brand-tagline">
-              Automated tank inventory monitoring, real-time GPS fleet tracking, and instant delivery dispatch management for enterprise fuel logistics.
+
+            {/* Cyan Outlined Pill Badge */}
+            <div className="codefus-brand-badge">
+              <div className="codefus-brand-badge-dot" />
+              <span className="codefus-brand-badge-text">CODEFUS // FDMS SMART FUEL TELEMETRY</span>
+            </div>
+
+            {/* Main Headline */}
+            <h1 className="codefus-brand-title">
+              Smart Autonomous Fuel<br />
+              Logistics &amp; <span className="highlight-orange">Dispatch System</span>
+            </h1>
+
+            {/* Tagline */}
+            <p className="codefus-brand-tagline">
+              Sub-second IoT tank inventory monitoring, predictive AI fleet routing, and tamper-proof valve cryptoseals for next-generation energy distribution.
             </p>
           </div>
 
-          {/* Animated Fuel Tanker Graphics Banner */}
-          <div className="truck-graphic-container">
-            <div className="truck-radar-bg">
-              <div className="truck-radar-ring r1"></div>
-              <div className="truck-radar-ring r2"></div>
-            </div>
-
-            {/* Custom Animated Fuel Truck SVG */}
-            <svg
-              className="truck-svg-anim"
-              viewBox="0 0 300 160"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
+          {/* Interactive 3D Moving Truck Stage with Parallax Perspective */}
+          <div
+            className="fdms-truck-stage"
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
+            style={{
+              transform: `perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
+              transition: tilt.x === 0 && tilt.y === 0 ? "transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)" : "transform 0.1s ease-out",
+            }}
+          >
+            {/* Interactive Cruise Control Button on 3D Stage */}
+            <button
+              type="button"
+              className="truck-cruise-toggle"
+              onClick={() => setIsMoving((prev) => !prev)}
+              title="Click to toggle Moving Truck cruise motion"
             >
-              {/* Truck Body Shadow */}
-              <ellipse cx="150" cy="142" rx="110" ry="10" fill="rgba(0,0,0,0.3)" />
+              <span className={`codefus-beacon-dot ${isMoving ? "beacon-cyan" : "beacon-orange"}`} />
+              <span>{isMoving ? `Live Cruise: ACTIVE (${cruiseSpeed} km/h)` : "Engine Idle (0 km/h)"}</span>
+            </button>
 
-              {/* Tank Body */}
-              <rect x="50" y="45" width="140" height="65" rx="30" fill="url(#tankGrad)" />
-              <path d="M50 75 Q120 65 190 75 L190 110 Q120 110 50 110 Z" fill="rgba(255,255,255,0.15)" />
+            {/* Truck Stage Viewport with Moving/Rumble Animations */}
+            <div className={`truck-stage-viewport ${isMoving ? "truck-is-cruising" : "truck-is-rumbling"}`}>
+              {/* High-Fidelity 3D Volvo Fuel Tanker & Industrial Depot Render */}
+              <img
+                src="/assets/fuel_tanker_depot_3d.jpg"
+                alt="Smart Autonomous Fuel Tanker Depot 3D Moving Illustration"
+                className="truck-hero-img"
+              />
 
-              {/* Tank Stripes */}
-              <rect x="75" y="45" width="6" height="65" fill="rgba(255,255,255,0.25)" />
-              <rect x="135" y="45" width="6" height="65" fill="rgba(255,255,255,0.25)" />
+              {/* Headlight Ray Projection on Wet Asphalt */}
+              <div className="truck-headlight-beam" />
 
-              {/* Fuel Level Waves */}
-              <path d="M60 85 Q90 80 120 85 T180 85 L180 100 L60 100 Z" fill="url(#fuelGrad)" opacity="0.8" />
+              {/* Wet Asphalt Ground Puddle Reflection Layer */}
+              <div className="truck-road-reflections" />
 
-              {/* Cabin */}
-              <path d="M190 60 H225 L245 85 V110 H190 V60 Z" fill="#0F172A" stroke="var(--orange)" strokeWidth="2" />
-              <path d="M200 68 H220 L232 85 H200 V68 Z" fill="#38BDF8" opacity="0.8" />
+              {/* LiDAR Laser Radar Scan Sweep */}
+              <div className="truck-lidar-sweep" />
 
-              {/* Wheels */}
-              <circle cx="85" cy="115" r="16" fill="#1E293B" stroke="var(--orange)" strokeWidth="3" />
-              <circle cx="85" cy="115" r="6" fill="#F8FAFC" />
-              <circle cx="155" cy="115" r="16" fill="#1E293B" stroke="var(--orange)" strokeWidth="3" />
-              <circle cx="155" cy="115" r="6" fill="#F8FAFC" />
-              <circle cx="215" cy="115" r="16" fill="#1E293B" stroke="var(--orange)" strokeWidth="3" />
-              <circle cx="215" cy="115" r="6" fill="#F8FAFC" />
+              {/* =======================================
+                  3 FLOATING CYAN HOLOGRAPHIC HUD PANELS
+                 ======================================= */}
+              {/* 1. Fuel Level HUD (Top Left) */}
+              <div className="fdms-hud-panel hud-fuel">
+                <div className="hud-icon-circle">
+                  <Droplets size={16} />
+                </div>
+                <div className="hud-fuel-content">
+                  <div className="hud-header-row">
+                    <span className="hud-label">FUEL LEVEL</span>
+                    <div className="hud-eq-bars">
+                      <span className="hud-eq-bar" />
+                      <span className="hud-eq-bar" />
+                      <span className="hud-eq-bar" />
+                      <span className="hud-eq-bar" />
+                      <span className="hud-eq-bar" />
+                    </div>
+                  </div>
+                  <div className="hud-value-large">98.7%</div>
+                </div>
+              </div>
 
-              {/* Headlight Beam */}
-              <polygon points="245,90 290,75 290,115 245,100" fill="url(#lightBeam)" opacity="0.6" />
+              {/* 2. GPS Tracking HUD (Top Center) */}
+              <div className="fdms-hud-panel hud-gps">
+                <div className="hud-gps-title">
+                  <span className="hud-label">GPS TRACKING</span>
+                  <div className="hud-live-badge">
+                    <Radio size={14} style={{ color: "#00F0FF" }} />
+                    <span>Live</span>
+                  </div>
+                </div>
+                <div className="hud-route-container">
+                  <svg className="hud-route-svg" viewBox="0 0 160 24" fill="none">
+                    <path
+                      d="M 6 18 Q 45 4 80 14 T 154 8"
+                      stroke="rgba(0, 240, 255, 0.45)"
+                      strokeWidth="2"
+                      strokeDasharray="3 3"
+                    />
+                    <circle cx="6" cy="18" r="3.5" fill="#10B981" />
+                    <circle cx="154" cy="8" r="3.5" fill="#FF7700" />
+                    <g className="hud-moving-truck">
+                      <circle cx="0" cy="0" r="4.5" fill="#00F0FF" filter="drop-shadow(0 0 4px #00F0FF)" />
+                    </g>
+                  </svg>
+                </div>
+              </div>
 
-              {/* Gradients */}
-              <defs>
-                <linearGradient id="tankGrad" x1="50" y1="45" x2="190" y2="110" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#FF5E00" />
-                  <stop offset="1" stopColor="#FFB703" />
-                </linearGradient>
-                <linearGradient id="fuelGrad" x1="60" y1="85" x2="180" y2="100" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#00E676" />
-                  <stop offset="1" stopColor="#10B981" />
-                </linearGradient>
-                <linearGradient id="lightBeam" x1="245" y1="95" x2="290" y2="95" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#FFD166" stopOpacity="0.8" />
-                  <stop offset="1" stopColor="#FFD166" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-            </svg>
+              {/* 3. Temperature HUD (Top Right) */}
+              <div className="fdms-hud-panel hud-temp">
+                <div className="hud-icon-circle">
+                  <Gauge size={16} />
+                </div>
+                <div className="hud-temp-content">
+                  <span className="hud-label">TEMPERATURE</span>
+                  <div className="hud-value-large">24.5°C</div>
+                </div>
+                <svg className="hud-temp-spline" viewBox="0 0 60 22" fill="none">
+                  <path
+                    d="M 0 16 Q 15 4 30 14 T 60 8"
+                    stroke="#00F0FF"
+                    strokeWidth="2"
+                    fill="none"
+                  />
+                  <path
+                    d="M 0 16 Q 15 4 30 14 T 60 8 L 60 22 L 0 22 Z"
+                    fill="url(#tempGlowGrad)"
+                    opacity="0.35"
+                  />
+                  <defs>
+                    <linearGradient id="tempGlowGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#00F0FF" />
+                      <stop offset="100%" stopColor="#00F0FF" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
+            </div>
           </div>
 
-          {/* Feature Highlights Grid */}
-          <div className="saas-features-grid">
-            <div className="saas-feature-item">
-              <div className="saas-feature-check">
-                <Check size={16} />
+          {/* Horizontal Telemetry Metrics Row (Directly Beneath Truck Wheels) */}
+          <div className="fdms-truck-metrics-row">
+            <div className="metric-pill">
+              <div className="metric-pill-icon">
+                <Droplets size={14} />
               </div>
-              <span>Live Fleet Tracking</span>
+              <div className="metric-pill-text">
+                <span className="metric-pill-primary">18,450L</span>
+                <span className="metric-pill-secondary">Premium Octane • Sealed</span>
+              </div>
             </div>
-            <div className="saas-feature-item">
-              <div className="saas-feature-check">
-                <Check size={16} />
+
+            <div className="metric-pill">
+              <div className="metric-pill-icon">
+                <Navigation size={14} />
               </div>
-              <span>Smart Fuel Dispatch</span>
+              <div className="metric-pill-text">
+                <span className="metric-pill-primary">En-Route</span>
+                <span className="metric-pill-secondary">AI Nav ETA 14m</span>
+              </div>
             </div>
-            <div className="saas-feature-item">
-              <div className="saas-feature-check">
-                <Check size={16} />
+
+            <div className="metric-pill">
+              <div className="metric-pill-icon">
+                <ShieldCheck size={14} />
               </div>
-              <span>Inventory Monitoring</span>
+              <div className="metric-pill-text">
+                <span className="metric-pill-primary">RTK GPS Fix</span>
+                <span className="metric-pill-secondary">99.98% • Latency 12ms</span>
+              </div>
             </div>
-            <div className="saas-feature-item">
-              <div className="saas-feature-check">
-                <Check size={16} />
+
+            <div className="metric-pill">
+              <div className="metric-pill-icon">
+                <Shield size={14} />
               </div>
-              <span>Real-Time Analytics</span>
+              <div className="metric-pill-text">
+                <span className="metric-pill-primary">Valve Security</span>
+                <span className="metric-pill-secondary">100% Cryptosealed</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 2x2 Compact Feature Highlights Grid */}
+          <div className="fdms-features-grid">
+            <div className="fdms-feature-pill">
+              <div className="fdms-feature-pill-icon">
+                <Radio size={14} />
+              </div>
+              <span>Sub-Second Fleet Telemetry</span>
+            </div>
+
+            <div className="fdms-feature-pill">
+              <div className="fdms-feature-pill-icon">
+                <Navigation size={14} />
+              </div>
+              <span>AI Autonomous Route Engine</span>
+            </div>
+
+            <div className="fdms-feature-pill">
+              <div className="fdms-feature-pill-icon">
+                <Fuel size={14} />
+              </div>
+              <span>IoT Tank Hydrodynamics</span>
+            </div>
+
+            <div className="fdms-feature-pill">
+              <div className="fdms-feature-pill-icon">
+                <Shield size={14} />
+              </div>
+              <span>Cryptosealed Valve Security</span>
             </div>
           </div>
         </div>
 
         {/* ==========================================
-            RIGHT COLUMN (45% Centered Glass Card)
+            RIGHT COLUMN: GLOWING CYAN-NEON AUTH CARD
            ========================================== */}
         <div className="saas-auth-right">
-          <form className="glass-auth-card" onSubmit={handleSubmit}>
+          <form className="glowing-auth-card" onSubmit={handleSubmit}>
+            {/* Top-left Illuminated Cyan Corner Arc */}
+            <div className="glowing-card-neon-corner" />
+
             {/* Card Header */}
             <div className="auth-card-head">
-              <div className="auth-card-logo">
-                <Fuel size={24} />
+              <div className="auth-card-logo-badge">
+                <Fuel size={26} />
               </div>
               <h2>Welcome back</h2>
-              <p>Sign in to your FDMS dispatch portal</p>
+              <p>Sign in to your FDMS dispatch &amp; telemetry portal</p>
+            </div>
+
+            {/* Quick Demo Access Role Bar */}
+            <div className="codefus-demo-roles">
+              <div className="codefus-demo-header">
+                <span>Quick Demo Access</span>
+                <span style={{ color: "#FF7700", fontWeight: "800" }}>1-Click Fill</span>
+              </div>
+              <div className="codefus-demo-pills">
+                {demoRoles.map((d) => (
+                  <button
+                    key={d.role}
+                    type="button"
+                    className={`codefus-role-pill ${email === d.email ? "active" : ""}`}
+                    onClick={() => handleSelectDemoRole(d)}
+                    title={`Click to fill ${d.role} credentials (${d.email})`}
+                  >
+                    <UserCheck size={12} style={{ opacity: 0.85 }} />
+                    <span>{d.label}</span>
+                    <span className="codefus-role-sub">{d.badge}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Input Form Fields */}
             <div className="input-wrapper">
-              <span className="input-label">Email address</span>
+              <label htmlFor="login-email" className="input-label">Email address</label>
               <div className="input-field-box">
                 <Mail size={18} className="input-icon" />
                 <input
+                  id="login-email"
                   ref={emailRef}
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@company.com"
+                  autoComplete="username"
                   required
                 />
               </div>
@@ -430,10 +611,10 @@ export default function Login() {
 
             <div className="input-wrapper">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span className="input-label">Password</span>
+                <label htmlFor="login-password" className="input-label">Password</label>
                 <Link
                   to="/forgot-password"
-                  style={{ fontSize: "12px", color: "var(--orange)", textDecoration: "none", fontWeight: "600" }}
+                  style={{ fontSize: "13px", color: "#FF7700", textDecoration: "none", fontWeight: "700" }}
                 >
                   Forgot password?
                 </Link>
@@ -441,16 +622,19 @@ export default function Login() {
               <div className="input-field-box">
                 <Lock size={18} className="input-icon" />
                 <input
+                  id="login-password"
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
+                  autoComplete="current-password"
                   required
                 />
                 <button
                   type="button"
                   className="eye-toggle-btn"
                   onClick={() => setShowPassword((s) => !s)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                   title={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -460,36 +644,29 @@ export default function Login() {
 
             {/* Invalid Credentials Banner */}
             {(loginError || state.status === "error") && (
-              <div className="auth-error" style={{ fontSize: "13px", padding: "10px 14px", borderRadius: "10px" }}>
+              <div className="auth-error" style={{ fontSize: "14px", padding: "10px 14px", borderRadius: "10px" }}>
                 {loginError || state.error || t("invalidCredentials")}
               </div>
             )}
 
-            {/* Primary Submit Button */}
-            <button type="submit" className="saas-submit-btn" disabled={state.status === "loading"}>
+            {/* Primary Submit Button with Glowing Flame Gradient */}
+            <button type="submit" className="codefus-submit-btn saas-submit-btn" disabled={state.status === "loading"}>
               <span>{state.status === "loading" ? t("signingIn") : "Sign In to Dashboard"}</span>
               <ArrowRight size={18} />
             </button>
 
             {/* Additional Authentication Options Divider */}
-            <div className="auth-divider" style={{ margin: "4px 0" }}>
+            <div className="auth-divider">
               <span>Or continue with</span>
             </div>
 
             {/* 1. Continue with Google (Real Google Sign-In) */}
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  width: "100%",
-                  minHeight: "44px",
-                }}
-              >
+              <div className="google-signin-wrapper">
                 <GoogleLogin
                   onSuccess={handleGoogleCredentialResponse}
                   onError={() => setGoogleError("Google login failed. Please try again.")}
-                  theme={theme === "dark" ? "filled_black" : "outline"}
+                  theme="filled_black"
                   size="large"
                   text="continue_with"
                   shape="rectangular"
@@ -521,7 +698,7 @@ export default function Login() {
             {/* 2. Login with OTP (Email OTP / Mobile OTP) */}
             <button
               type="button"
-              className="btn-secondary full"
+              className="auth-otp-btn"
               onClick={() => {
                 setShowOtpSection(!showOtpSection);
                 setOtpMessage({ type: "", text: "", preview: "" });
@@ -529,20 +706,12 @@ export default function Login() {
                 setOtpSent(false);
               }}
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                fontWeight: "700",
-                fontSize: "13px",
-                height: "50px",
-                borderRadius: "12px",
-                borderColor: showOtpSection ? "var(--orange)" : "var(--line)",
-                background: showOtpSection ? "rgba(255, 94, 0, 0.06)" : "transparent",
-                color: showOtpSection ? "var(--orange)" : "var(--text)",
+                borderColor: showOtpSection ? "#FF7700" : "rgba(255, 255, 255, 0.12)",
+                background: showOtpSection ? "rgba(255, 119, 0, 0.12)" : "rgba(12, 22, 38, 0.7)",
+                color: showOtpSection ? "#FF7700" : "#FFFFFF",
               }}
             >
-              <Smartphone size={18} />
+              <Smartphone size={16} />
               <span>{showOtpSection ? "Hide OTP Login" : "Login with OTP"}</span>
             </button>
 
@@ -636,15 +805,17 @@ export default function Login() {
                 {otpMode === "email" && (
                   <>
                     <div className="input-wrapper">
-                      <span className="input-label" style={{ fontSize: "12px" }}>Registered Email Address</span>
+                      <label htmlFor="otp-email-input" className="input-label" style={{ fontSize: "14px" }}>Registered Email Address</label>
                       <div style={{ display: "flex", gap: "8px" }}>
                         <div className="input-field-box" style={{ flex: 1, height: "46px" }}>
                           <Mail size={16} className="input-icon" />
                           <input
+                            id="otp-email-input"
                             type="email"
                             value={otpEmail}
                             onChange={(e) => setOtpEmail(e.target.value)}
                             placeholder="user@company.com"
+                            aria-label="Registered Email Address"
                           />
                         </div>
                         <button
@@ -655,7 +826,7 @@ export default function Login() {
                           style={{
                             height: "46px",
                             padding: "0 14px",
-                            fontSize: "12px",
+                            fontSize: "13px",
                             fontWeight: "700",
                             whiteSpace: "nowrap",
                           }}
@@ -668,19 +839,21 @@ export default function Login() {
                     {otpSent && (
                       <div className="input-wrapper">
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span className="input-label" style={{ fontSize: "12px" }}>Enter 6-Digit Email OTP</span>
-                          <span style={{ fontSize: "11px", color: otpTimer > 0 ? "var(--orange)" : "var(--red, #ef4444)", fontWeight: "700" }}>
+                          <label htmlFor="otp-email-code" className="input-label" style={{ fontSize: "14px" }}>Enter 6-Digit Email OTP</label>
+                          <span style={{ fontSize: "12px", color: otpTimer > 0 ? "var(--orange)" : "var(--red, #ef4444)", fontWeight: "700" }}>
                             {otpTimer > 0 ? `Expires in ${formatTimer(otpTimer)} (5 mins)` : "Expired"}
                           </span>
                         </div>
                         <div className="input-field-box" style={{ height: "46px" }}>
                           <Shield size={16} className="input-icon" />
                           <input
+                            id="otp-email-code"
                             type="text"
                             maxLength={6}
                             value={otp}
                             onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
                             placeholder="••••••"
+                            aria-label="Enter 6-digit email OTP"
                           />
                         </div>
                         <button
@@ -691,7 +864,7 @@ export default function Login() {
                           style={{
                             height: "44px",
                             width: "100%",
-                            fontSize: "13px",
+                            fontSize: "14px",
                             fontWeight: "800",
                             marginTop: "4px",
                             background: "var(--grad-flame)",
@@ -708,15 +881,17 @@ export default function Login() {
                 {otpMode === "mobile" && (
                   <>
                     <div className="input-wrapper">
-                      <span className="input-label" style={{ fontSize: "12px" }}>Registered Mobile Number</span>
+                      <label htmlFor="otp-mobile-input" className="input-label" style={{ fontSize: "14px" }}>Registered Mobile Number</label>
                       <div style={{ display: "flex", gap: "8px" }}>
                         <div className="input-field-box" style={{ flex: 1, height: "46px" }}>
                           <Phone size={16} className="input-icon" />
                           <input
+                            id="otp-mobile-input"
                             type="tel"
                             value={mobile}
                             onChange={(e) => setMobile(e.target.value)}
                             placeholder="+91 98401 23456"
+                            aria-label="Registered Mobile Number"
                           />
                         </div>
                         <button
@@ -727,7 +902,7 @@ export default function Login() {
                           style={{
                             height: "46px",
                             padding: "0 14px",
-                            fontSize: "12px",
+                            fontSize: "13px",
                             fontWeight: "700",
                             whiteSpace: "nowrap",
                           }}
@@ -740,19 +915,21 @@ export default function Login() {
                     {otpSent && (
                       <div className="input-wrapper">
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span className="input-label" style={{ fontSize: "12px" }}>Enter 6-Digit Mobile OTP</span>
-                          <span style={{ fontSize: "11px", color: otpTimer > 0 ? "var(--orange)" : "var(--red, #ef4444)", fontWeight: "700" }}>
+                          <label htmlFor="otp-mobile-code" className="input-label" style={{ fontSize: "14px" }}>Enter 6-Digit Mobile OTP</label>
+                          <span style={{ fontSize: "12px", color: otpTimer > 0 ? "var(--orange)" : "var(--red, #ef4444)", fontWeight: "700" }}>
                             {otpTimer > 0 ? `Expires in ${formatTimer(otpTimer)} (5 mins)` : "Expired"}
                           </span>
                         </div>
                         <div className="input-field-box" style={{ height: "46px" }}>
                           <Shield size={16} className="input-icon" />
                           <input
+                            id="otp-mobile-code"
                             type="text"
                             maxLength={6}
                             value={otp}
                             onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
                             placeholder="••••••"
+                            aria-label="Enter 6-digit mobile OTP"
                           />
                         </div>
                         <button
@@ -763,7 +940,7 @@ export default function Login() {
                           style={{
                             height: "44px",
                             width: "100%",
-                            fontSize: "13px",
+                            fontSize: "14px",
                             fontWeight: "800",
                             marginTop: "4px",
                             background: "var(--grad-flame)",
@@ -779,19 +956,19 @@ export default function Login() {
             )}
 
             {/* B2B Customer Registration Toggle */}
-            <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px dashed var(--line)", textAlign: "center" }}>
+            <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px dashed rgba(255, 255, 255, 0.1)", textAlign: "center" }}>
               <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
-                <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>Don't have an account?</span>
+                <span style={{ fontSize: "13.5px", color: "#94A3B8" }}>Don't have an account?</span>
                 <button
                   type="button"
                   onClick={() => navigate("/register")}
                   style={{
                     background: "none",
                     border: "none",
-                    color: "var(--orange)",
+                    color: "#FF7700",
                     fontWeight: "800",
                     cursor: "pointer",
-                    fontSize: "12px",
+                    fontSize: "13.5px",
                     textDecoration: "underline",
                     padding: 0,
                   }}
@@ -803,9 +980,22 @@ export default function Login() {
                 type="button"
                 className="btn-secondary full"
                 onClick={() => navigate("/register")}
-                style={{ fontWeight: "800", borderColor: "var(--orange)", color: "var(--orange)", gap: "8px" }}
+                style={{
+                  fontWeight: "700",
+                  fontSize: "13.5px",
+                  border: "1px solid rgba(255, 119, 0, 0.45)",
+                  background: "rgba(14, 22, 38, 0.8)",
+                  color: "#FFFFFF",
+                  gap: "8px",
+                  height: "44px",
+                  borderRadius: "10px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.2s ease",
+                }}
               >
-                <Building2 size={16} /> Register Corporate Account
+                <Building2 size={16} color="#FF7700" /> Register Corporate Account
               </button>
             </div>
           </form>
@@ -815,6 +1005,6 @@ export default function Login() {
 
 
       <CompanyRegisterModal open={registerModalOpen} onClose={() => setRegisterModalOpen(false)} />
-    </div>
+    </main>
   );
 }

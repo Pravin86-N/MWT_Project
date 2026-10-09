@@ -258,6 +258,26 @@ const getCustomers = async (req, res, next) => {
 
     console.log(`[FDMS Backend] Successfully compiled ${result.length} real customer records from MongoDB.`);
 
+    const page = parseInt(req.query.page, 10);
+    const limit = parseInt(req.query.limit, 10);
+    if (page || limit) {
+      const p = Math.max(1, page || 1);
+      const l = Math.max(1, limit || 10);
+      const totalRecords = result.length;
+      const totalPages = Math.ceil(totalRecords / l) || 1;
+      const paginatedData = result.slice((p - 1) * l, p * l);
+
+      return res.status(200).json({
+        success: true,
+        data: paginatedData,
+        page: p,
+        limit: l,
+        totalRecords,
+        totalPages,
+        count: paginatedData.length,
+      });
+    }
+
     res.status(200).json({
       success: true,
       count: result.length,

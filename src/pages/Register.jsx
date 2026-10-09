@@ -137,7 +137,7 @@ export default function Register() {
   };
 
   return (
-    <div className="saas-auth-page" style={{ minHeight: "100vh", padding: "30px 16px" }}>
+    <div className="codefus-auth-page saas-auth-page" style={{ minHeight: "100vh", padding: "40px 16px" }}>
       {/* Top Floating Theme Switcher */}
       <button
         className="icon-btn theme-fab"
@@ -158,38 +158,17 @@ export default function Register() {
         )}
       </button>
 
-      <div style={{ maxWidth: "780px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "820px", margin: "0 auto", width: "100%", position: "relative", zIndex: 10 }}>
         {/* Header */}
-        <div style={{ textAlign: "center", marginBottom: "24px" }}>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "10px",
-              padding: "6px 14px",
-              background: "var(--panel-alt)",
-              borderRadius: "999px",
-              border: "1px solid var(--line)",
-              marginBottom: "12px",
-            }}
-          >
-            <Fuel size={18} style={{ color: "var(--orange)" }} />
-            <span
-              style={{
-                fontSize: "12px",
-                fontWeight: "800",
-                color: "var(--orange)",
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-              }}
-            >
-              FDMS B2B Customer Portal
-            </span>
+        <div style={{ textAlign: "center", marginBottom: "28px" }}>
+          <div className="codefus-brand-badge" style={{ marginBottom: "14px" }}>
+            <div className="codefus-brand-badge-dot"></div>
+            <span className="codefus-brand-badge-text">FDMS B2B CUSTOMER PORTAL</span>
           </div>
-          <h1 style={{ fontSize: "28px", fontWeight: "800", margin: "0 0 6px", color: "var(--text)" }}>
+          <h1 className="codefus-brand-title" style={{ fontSize: "36px", marginBottom: "8px" }}>
             Corporate Customer Registration
           </h1>
-          <p style={{ fontSize: "14px", color: "var(--text-dim)", margin: 0 }}>
+          <p className="codefus-brand-tagline" style={{ maxWidth: "560px", margin: "0 auto" }}>
             Submit your corporate details and compliance documents for verification and account activation.
           </p>
         </div>
@@ -264,13 +243,11 @@ export default function Register() {
           /* Main Registration Form Card */
           <form
             onSubmit={handleSubmit}
-            className="card"
+            className="codefus-glass-card glass-auth-card"
             style={{
-              padding: "32px",
-              background: "var(--panel)",
-              border: "1px solid var(--line)",
-              borderRadius: "16px",
-              boxShadow: "var(--shadow-lg)",
+              padding: "36px 32px",
+              maxWidth: "820px",
+              width: "100%",
               display: "flex",
               flexDirection: "column",
               gap: "28px",
@@ -531,11 +508,11 @@ export default function Register() {
                 }}
               >
                 <Upload size={20} style={{ color: "var(--orange)" }} />
-                <h2 style={{ fontSize: "17px", fontWeight: "700", margin: 0, color: "var(--text)" }}>
+                <h2 style={{ fontSize: "18px", fontWeight: "700", margin: 0, color: "var(--text)" }}>
                   Document Uploads
                 </h2>
               </div>
-              <p style={{ fontSize: "12px", color: "var(--text-dim)", margin: "0 0 14px" }}>
+              <p style={{ fontSize: "13.5px", color: "var(--text-dim)", margin: "0 0 14px" }}>
                 Accepted formats: PDF, PNG, JPG (Max 10MB per file). Documents will be audited by Operations.
               </p>
 
@@ -549,14 +526,14 @@ export default function Register() {
                     border: "1px dashed var(--line)",
                   }}
                 >
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>
+                  <label style={{ display: "block", fontSize: "14px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>
                     PAN Document *
                   </label>
                   <input
                     type="file"
                     accept=".pdf,.png,.jpg,.jpeg"
                     onChange={(e) => setPanDocument(e.target.files[0] || null)}
-                    style={{ fontSize: "12px", width: "100%" }}
+                    style={{ fontSize: "13px", width: "100%" }}
                   />
                   {panDocument && (
                     <small style={{ color: "var(--green-neon)", display: "block", marginTop: "4px" }}>
@@ -574,14 +551,14 @@ export default function Register() {
                     border: "1px dashed var(--line)",
                   }}
                 >
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>
+                  <label style={{ display: "block", fontSize: "14px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>
                     GST Certificate *
                   </label>
                   <input
                     type="file"
                     accept=".pdf,.png,.jpg,.jpeg"
                     onChange={(e) => setGstCertificate(e.target.files[0] || null)}
-                    style={{ fontSize: "12px", width: "100%" }}
+                    style={{ fontSize: "13px", width: "100%" }}
                   />
                   {gstCertificate && (
                     <small style={{ color: "var(--green-neon)", display: "block", marginTop: "4px" }}>
@@ -599,7 +576,7 @@ export default function Register() {
                     border: "1px dashed var(--line)",
                   }}
                 >
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>
+                  <label style={{ display: "block", fontSize: "14px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>
                     Company Registration Certificate *
                   </label>
                   <input
@@ -608,7 +585,7 @@ export default function Register() {
                     onChange={(e) =>
                       setCompanyRegistrationCertificate(e.target.files[0] || null)
                     }
-                    style={{ fontSize: "12px", width: "100%" }}
+                    style={{ fontSize: "13px", width: "100%" }}
                   />
                   {companyRegistrationCertificate && (
                     <small style={{ color: "var(--green-neon)", display: "block", marginTop: "4px" }}>
@@ -626,14 +603,14 @@ export default function Register() {
                     border: "1px dashed var(--line)",
                   }}
                 >
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>
+                  <label style={{ display: "block", fontSize: "14px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>
                     Address Proof *
                   </label>
                   <input
                     type="file"
                     accept=".pdf,.png,.jpg,.jpeg"
                     onChange={(e) => setAddressProof(e.target.files[0] || null)}
-                    style={{ fontSize: "12px", width: "100%" }}
+                    style={{ fontSize: "13px", width: "100%" }}
                   />
                   {addressProof && (
                     <small style={{ color: "var(--green-neon)", display: "block", marginTop: "4px" }}>
@@ -652,7 +629,7 @@ export default function Register() {
                     border: "1px dashed var(--line)",
                   }}
                 >
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>
+                  <label style={{ display: "block", fontSize: "14px", fontWeight: "700", color: "var(--text)", marginBottom: "6px" }}>
                     Additional Supporting Documents (Optional)
                   </label>
                   <input
@@ -661,7 +638,7 @@ export default function Register() {
                     onChange={(e) =>
                       setAdditionalSupportingDocuments(e.target.files[0] || null)
                     }
-                    style={{ fontSize: "12px", width: "100%" }}
+                    style={{ fontSize: "13px", width: "100%" }}
                   />
                   {additionalSupportingDocuments && (
                     <small style={{ color: "var(--green-neon)", display: "block", marginTop: "4px" }}>
@@ -674,7 +651,7 @@ export default function Register() {
 
             {/* Submit Action */}
             <div style={{ display: "flex", flexDirection: "column", gap: "12px", paddingTop: "10px" }}>
-              <button type="submit" className="saas-submit-btn" disabled={loading}>
+              <button type="submit" className="codefus-submit-btn saas-submit-btn" disabled={loading}>
                 <span>{loading ? "Submitting Application..." : "Submit Registration Application"}</span>
                 <ArrowRight size={18} />
               </button>

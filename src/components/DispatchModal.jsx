@@ -1,10 +1,18 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { X, Truck, UserCheck, AlertTriangle, CheckCircle2, ShieldCheck, Sparkles, Navigation, Clock, Building2, Zap } from "lucide-react";
+import { X, Truck, UserCheck, AlertTriangle, CheckCircle2, ShieldCheck, Sparkles, Navigation, Clock, Building2, Zap, Lock } from "lucide-react";
 import { useNotifications } from "../context/NotificationContext";
+import { useAuth } from "../context/AuthContext";
+import { ROLES, can } from "../utils/permissions";
 import { driverApi, vehicleApi, orderApi } from "../services/api";
+import FuelBadge from "./FuelBadge";
 
 export default function DispatchModal({ order, onClose, onConfirm }) {
   const { addNotification } = useNotifications();
+  const { state: authState } = useAuth();
+  const currentUser = authState?.user;
+  const userRole = currentUser?.role || "";
+  const canAssign = can(userRole, "orders.assign");
+
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -174,20 +182,23 @@ export default function DispatchModal({ order, onClose, onConfirm }) {
             <Truck size={22} style={{ color: "var(--orange)" }} />
             <h3 style={{ margin: "0" }}>Dispatch Assignment Center</h3>
           </div>
-          <button type="button" className="icon-btn" onClick={onClose}>
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close dispatch modal">
             <X size={18} />
           </button>
         </div>
 
-        <div style={{ padding: "10px 14px", background: "var(--grad-dark-panel)", borderRadius: "12px", border: "1px solid var(--line)" }}>
-          <div style={{ fontSize: "13px", color: "var(--text-dim)" }}>
-            Order Number: <strong style={{ color: "var(--text)" }}>{order.orderNumber}</strong>
+        <div style={{ padding: "12px 14px", background: "var(--grad-dark-panel)", borderRadius: "12px", border: "1px solid var(--line)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontSize: "13px", color: "var(--text-dim)" }}>
+              Order Number: <strong style={{ color: "var(--text)" }}>{order.orderNumber}</strong>
+            </div>
+            <FuelBadge fuelType={order.fuelCode || order.fuelType} />
           </div>
-          <div style={{ fontSize: "14px", fontWeight: "700", marginTop: "2px", color: "var(--text)" }}>
+          <div style={{ fontSize: "14px", fontWeight: "700", marginTop: "4px", color: "var(--text)" }}>
             {order.customer} ({order.site} • {order.city})
           </div>
-          <div style={{ fontSize: "12px", color: "var(--orange)", marginTop: "4px", fontWeight: "700" }}>
-            Cargo: {order.qty.toLocaleString()} L of {order.fuelCode} Bulk Fuel
+          <div style={{ fontSize: "12px", color: "var(--fuel-diesel, #F59E0B)", marginTop: "4px", fontWeight: "700" }}>
+            Cargo: {order.qty?.toLocaleString()} L Bulk Fuel Requisition
           </div>
         </div>
 
@@ -205,7 +216,7 @@ export default function DispatchModal({ order, onClose, onConfirm }) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <Sparkles size={16} style={{ color: "var(--orange)" }} />
-                <strong style={{ fontSize: "12px", color: "var(--orange)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                <strong style={{ fontSize: "13px", color: "var(--orange)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                   Smart Fuel Dispatch Engine
                 </strong>
               </div>
@@ -214,8 +225,8 @@ export default function DispatchModal({ order, onClose, onConfirm }) {
                 className="btn-ghost btn-sm"
                 onClick={handleApplySmartSuggestion}
                 style={{
-                  fontSize: "11px",
-                  padding: "4px 10px",
+                  fontSize: "13px",
+                  padding: "5px 12px",
                   borderRadius: "6px",
                   background: "var(--orange)",
                   color: "#FFF",
@@ -223,28 +234,28 @@ export default function DispatchModal({ order, onClose, onConfirm }) {
                   cursor: "pointer",
                 }}
               >
-                <Zap size={12} style={{ verticalAlign: "middle", marginRight: "3px" }} />
+                <Zap size={13} style={{ verticalAlign: "middle", marginRight: "3px" }} />
                 Auto-Select
               </button>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", fontSize: "11px" }}>
-              <div style={{ background: "var(--panel)", padding: "8px", borderRadius: "8px", border: "1px solid var(--line)" }}>
-                <span style={{ color: "var(--text-dim)", display: "block" }}>Nearest Depot</span>
-                <strong style={{ color: "var(--text)", display: "block", fontSize: "12px", marginTop: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", fontSize: "13px" }}>
+              <div style={{ background: "var(--panel)", padding: "10px", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                <span style={{ color: "var(--text-dim)", display: "block", fontSize: "12px" }}>Nearest Depot</span>
+                <strong style={{ color: "var(--text)", display: "block", fontSize: "13px", marginTop: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {smartDispatch.nearestDepot?.name || "Central Depot"}
                 </strong>
-                <small style={{ color: "var(--green-neon)", fontWeight: "700" }}>
+                <small style={{ color: "var(--green-neon)", fontWeight: "700", fontSize: "12px" }}>
                   {smartDispatch.nearestDepot?.distanceKm ?? 3.5} km away
                 </small>
               </div>
 
-              <div style={{ background: "var(--panel)", padding: "8px", borderRadius: "8px", border: "1px solid var(--line)" }}>
-                <span style={{ color: "var(--text-dim)", display: "block" }}>Nearest Vehicle</span>
-                <strong style={{ color: "var(--text)", display: "block", fontSize: "12px", marginTop: "2px" }}>
+              <div style={{ background: "var(--panel)", padding: "10px", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                <span style={{ color: "var(--text-dim)", display: "block", fontSize: "12px" }}>Nearest Vehicle</span>
+                <strong style={{ color: "var(--text)", display: "block", fontSize: "13px", marginTop: "2px" }}>
                   {smartDispatch.nearestVehicle?.vehicleNumber || "TN-01-FD-1011"}
                 </strong>
-                <small style={{ color: "var(--blue)", fontWeight: "700" }}>
+                <small style={{ color: "var(--blue)", fontWeight: "700", fontSize: "12px" }}>
                   {smartDispatch.nearestVehicle?.model || "12,000L Tanker"}
                 </small>
               </div>
@@ -263,7 +274,7 @@ export default function DispatchModal({ order, onClose, onConfirm }) {
         )}
 
         {/* Driver Selection Field */}
-        <label className="field" style={{ marginTop: "16px" }}>
+        <label className="field" htmlFor="dispatch-driver-select" style={{ marginTop: "16px" }}>
           <span style={{ display: "flex", justifyContent: "space-between" }}>
             <span>Select Available On-Duty Driver</span>
             <small style={{ color: "var(--green-neon)" }}>
@@ -275,7 +286,13 @@ export default function DispatchModal({ order, onClose, onConfirm }) {
               ⚠️ No drivers are currently On-Duty. Please toggle driver duty status in Drivers page.
             </div>
           ) : (
-            <select value={selectedDriver} onChange={(e) => handleDriverChange(e.target.value)} required>
+            <select
+              id="dispatch-driver-select"
+              value={selectedDriver}
+              onChange={(e) => handleDriverChange(e.target.value)}
+              aria-label="Select Available On-Duty Driver"
+              required
+            >
               {availableDrivers.map((d) => (
                 <option key={d._id || d.id} value={d.name}>
                   {d.name} ({d.phone || "On Duty"}) — {d.vehicle || "No default truck"}
@@ -286,14 +303,20 @@ export default function DispatchModal({ order, onClose, onConfirm }) {
         </label>
 
         {/* Vehicle Selection Field */}
-        <label className="field" style={{ marginTop: "12px" }}>
+        <label className="field" htmlFor="dispatch-vehicle-select" style={{ marginTop: "12px" }}>
           <span>Select Available Delivery Tanker Vehicle</span>
           {availableVehicles.length === 0 ? (
             <div style={{ padding: "10px", background: "rgba(255, 0, 85, 0.1)", color: "var(--red)", borderRadius: "8px", fontSize: "13px" }}>
               ⚠️ No vehicles are currently available. Please register or free up a vehicle.
             </div>
           ) : (
-            <select value={selectedVehicle} onChange={(e) => setSelectedVehicle(e.target.value)} required>
+            <select
+              id="dispatch-vehicle-select"
+              value={selectedVehicle}
+              onChange={(e) => setSelectedVehicle(e.target.value)}
+              aria-label="Select Available Delivery Tanker Vehicle"
+              required
+            >
               {availableVehicles.map((v) => {
                 const regNum = v.vehicleNumber || v.reg;
                 return (
@@ -306,22 +329,40 @@ export default function DispatchModal({ order, onClose, onConfirm }) {
           )}
         </label>
 
+        {!canAssign && (
+          <div style={{ background: "rgba(249, 115, 22, 0.12)", border: "1px solid rgba(249, 115, 22, 0.3)", padding: "12px", borderRadius: "12px", fontSize: "12px", color: "var(--orange)", marginTop: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <Lock size={15} style={{ flexShrink: 0 }} />
+            <span><strong>Operational Dispatch Restriction:</strong> Tanker driver dispatch is restricted to Depot Managers for their local fleet. Platform Governance view active.</span>
+          </div>
+        )}
+
         <div style={{ background: "rgba(255, 183, 3, 0.08)", border: "1px solid rgba(255, 183, 3, 0.25)", padding: "12px", borderRadius: "12px", fontSize: "12px", color: "var(--amber)", marginTop: "14px" }}>
           <strong>Dispatch Check:</strong> Assigning a driver and vehicle automatically transfers cargo to the tanker's live GPS telemetry route.
         </div>
 
         <div style={{ display: "flex", gap: "10px", marginTop: "18px" }}>
           <button type="button" className="btn-secondary full" onClick={onClose}>
-            Cancel
+            Close
           </button>
-          <button
-            type="submit"
-            className="btn-primary full"
-            disabled={availableDrivers.length === 0}
-            style={{ backgroundColor: "var(--orange)", borderColor: "var(--orange)", fontWeight: "800" }}
-          >
-            Confirm Dispatch Assignment
-          </button>
+          {canAssign ? (
+            <button
+              type="submit"
+              className="btn-primary full"
+              disabled={availableDrivers.length === 0}
+              style={{ backgroundColor: "var(--orange)", borderColor: "var(--orange)", fontWeight: "800" }}
+            >
+              Confirm Dispatch Assignment
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="btn-secondary full"
+              style={{ opacity: 0.6, cursor: "not-allowed", fontWeight: "700" }}
+            >
+              Dispatch Reserved for Depot Manager
+            </button>
+          )}
         </div>
       </form>
     </div>

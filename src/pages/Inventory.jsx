@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Database,
   RefreshCw,
@@ -17,18 +17,45 @@ import {
   Activity,
   Droplets,
   Zap,
+  Lock,
 } from "lucide-react";
 import { useInventory } from "../context/InventoryContext";
 import { useLanguage } from "../context/LanguageContext";
+import { useAuth } from "../context/AuthContext";
+import { ROLES, can } from "../utils/permissions";
 import { fuelOf } from "../data/seed";
+import Pagination from "../components/Pagination";
+import FuelBadge from "../components/FuelBadge";
+import CountUp from "../components/CountUp";
+import { getFuelInfo, getFuelHex } from "../utils/fuelColors";
+import { playLowInventorySound } from "../utils/soundNotifications";
 
 export default function Inventory() {
   const { t } = useLanguage();
   const { tanks, refillTank, resetTanks, lowStockWarnings } = useInventory();
+  const { state: authState } = useAuth();
+  const currentUser = authState?.user;
+  const userRole = currentUser?.role || "";
+  const canRefill = can(userRole, "inventory.refill");
+
   const [refillingId, setRefillingId] = useState(null);
   const [toast, setToast] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [fuelFilter, setFuelFilter] = useState("ALL");
+  const [tablePage, setTablePage] = useState(1);
+  const [tablePageSize, setTablePageSize] = useState(10);
+
+  // Sound notification trigger for low inventory (rate-limited / once)
+  useEffect(() => {
+    if (lowStockWarnings.length > 0) {
+      playLowInventorySound();
+    }
+  }, [lowStockWarnings.length]);
+
+  // Reset pagination when search or filter changes
+  useEffect(() => {
+    setTablePage(1);
+  }, [searchQuery, fuelFilter]);
 
   // Handle refill with telemetry simulation feedback
   const handleRefill = (tankId, tankName) => {
@@ -57,6 +84,11 @@ export default function Inventory() {
     });
   }, [tanks, searchQuery, fuelFilter]);
 
+  // Table pagination calculations
+  const totalPages = Math.max(1, Math.ceil(filteredTanks.length / tablePageSize));
+  const clampedTablePage = Math.min(tablePage, totalPages);
+  const paginatedTanks = filteredTanks.slice((clampedTablePage - 1) * tablePageSize, clampedTablePage * tablePageSize);
+
   // Compute burn rate estimated days remaining based on current litres
   const getEstimatedDays = (currentVolume, fuelCode) => {
     const burnRates = { DSL: 2800, PTL: 2100, LPG: 1400, KRS: 600 };
@@ -70,13 +102,34 @@ export default function Inventory() {
       {/* Enterprise Page Header */}
       <header className="inventory-header-v2">
         <div>
-          <h1 className="page-title">{t("inventoryTitle") || "Bulk Storage Telemetry"}</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <h1 className="page-title" style={{ margin: 0 }}>{t("inventoryTitle") || "Bulk Storage Telemetry"}</h1>
+            {!canRefill && (
+              <span
+                style={{
+                  fontSize: "12px",
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  background: "rgba(249, 115, 22, 0.15)",
+                  border: "1px solid rgba(249, 115, 22, 0.3)",
+                  color: "var(--orange)",
+                  fontWeight: "700",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <Lock size={12} />
+                VIEW-ONLY • Physical Refills Managed by Depot Manager
+              </span>
+            )}
+          </div>
           <p>
             Real-time underground fuel vault telemetry, thermal & pressure monitoring, and automated reserve alarms.
           </p>
         </div>
         <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-          <button className="btn-secondary" onClick={resetTanks} style={{ padding: "10px 16px", borderRadius: "10px", fontSize: "13px", fontWeight: "600", display: "flex", alignItems: "center", gap: "8px", background: "var(--panel-alt)", border: "1px solid var(--line)", color: "var(--text)", cursor: "pointer" }}>
+          <button className="btn-secondary" onClick={resetTanks} style={{ padding: "10px 16px", borderRadius: "10px", fontSize: "14px", fontWeight: "600", display: "flex", alignItems: "center", gap: "8px", background: "var(--panel-alt)", border: "1px solid var(--line)", color: "var(--text)", cursor: "pointer" }}>
             <RefreshCw size={15} /> Reset Stock Telemetry
           </button>
         </div>
@@ -111,7 +164,7 @@ export default function Inventory() {
             </div>
           </div>
           <div className="kpi-value-group">
-            <span className="kpi-val">{totalCapacity.toLocaleString()}</span>
+            <span className="kpi-val"><CountUp end={totalCapacity} /></span>
             <span className="kpi-unit">Litres</span>
           </div>
           <div className="kpi-badge success">
@@ -127,7 +180,7 @@ export default function Inventory() {
             </div>
           </div>
           <div className="kpi-value-group">
-            <span className="kpi-val">{totalCurrent.toLocaleString()}</span>
+            <span className="kpi-val"><CountUp end={totalCurrent} /></span>
             <span className="kpi-unit">Litres Available</span>
           </div>
           <div className="kpi-badge success">
@@ -154,12 +207,12 @@ export default function Inventory() {
         <div className="kpi-card-v2">
           <div className="kpi-header">
             <span className="kpi-title">Safety Threshold Alerts</span>
-            <div className="kpi-icon-wrapper" style={{ color: lowStockWarnings.length > 0 ? "var(--red)" : "var(--green)" }}>
+            <div className="kpi-icon-wrapper" style={{ color: lowStockWarnings.length > 0 ? "var(--status-danger, #EF4444)" : "var(--status-success, #22C55E)" }}>
               <AlertTriangle size={18} />
             </div>
           </div>
           <div className="kpi-value-group">
-            <span className="kpi-val" style={{ color: lowStockWarnings.length > 0 ? "var(--red)" : "var(--green)" }}>
+            <span className="kpi-val" style={{ color: lowStockWarnings.length > 0 ? "var(--status-danger, #EF4444)" : "var(--status-success, #22C55E)" }}>
               {lowStockWarnings.length}
             </span>
             <span className="kpi-unit">Vault Alarm(s)</span>
@@ -173,8 +226,8 @@ export default function Inventory() {
       {/* Filter and Search Toolbar */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "14px" }}>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          {["ALL", "DSL", "PTL", "LPG", "KRS"].map((code) => {
-            const labelMap = { ALL: "All Vaults", DSL: "Diesel", PTL: "Petrol", LPG: "LPG Spheres", KRS: "Kerosene" };
+          {["ALL", "DSL", "PTL", "CNG", "LPG", "KRS"].map((code) => {
+            const labelMap = { ALL: "All Vaults", DSL: "Diesel", PTL: "Petrol", CNG: "CNG", LPG: "LPG Spheres", KRS: "Kerosene" };
             const isActive = fuelFilter === code;
             return (
               <button
@@ -186,14 +239,13 @@ export default function Inventory() {
                   fontSize: "13px",
                   fontWeight: "600",
                   cursor: "pointer",
-                  border: isActive ? "1px solid var(--orange)" : "1px solid var(--line)",
-                  background: isActive ? "var(--grad-flame)" : "var(--panel-alt)",
+                  border: isActive ? "1px solid var(--fuel-diesel, #F59E0B)" : "1px solid var(--line)",
+                  background: isActive ? "var(--fuel-diesel, #F59E0B)" : "var(--panel-alt)",
                   color: isActive ? "#FFFFFF" : "var(--text-dim)",
-                  boxShadow: isActive ? "var(--shadow-flame-glow)" : "none",
                   transition: "all 0.2s ease",
                 }}
               >
-                {labelMap[code]}
+                {labelMap[code] || code}
               </button>
             );
           })}
@@ -204,6 +256,7 @@ export default function Inventory() {
           <input
             type="text"
             placeholder="Search vault name or code..."
+            aria-label="Search fuel vault name or code"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="table-search-input"
@@ -215,57 +268,68 @@ export default function Inventory() {
       {/* Responsive Telemetry Cards Grid (2-4 cards per row) */}
       <div className="tanks-telemetry-grid">
         {filteredTanks.map((tank) => {
-          const fuel = fuelOf(tank.fuelCode);
+          const fuelInfo = getFuelInfo(tank.fuelCode);
           const percent = Math.round((tank.current / tank.capacity) * 100);
           const isLow = tank.current <= tank.threshold;
           const isCritical = percent <= 20;
           const estDays = getEstimatedDays(tank.current, tank.fuelCode);
 
-          let cardStateClass = "";
+          let pulseAnimationClass = "";
           let statusText = "Optimal";
           let statusClass = "optimal";
+          let statusIcon = <CheckCircle2 size={13} />;
 
           if (isCritical) {
-            cardStateClass = "critical-state";
+            pulseAnimationClass = "critical-tank-pulse";
             statusText = "Critical Stock";
             statusClass = "critical";
+            statusIcon = <ShieldAlert size={13} />;
           } else if (isLow) {
-            cardStateClass = "warning-state";
+            pulseAnimationClass = "warning-tank-pulse";
             statusText = "Low Reserve";
             statusClass = "low";
+            statusIcon = <AlertTriangle size={13} />;
           }
 
           return (
-            <div key={tank.id} className={`telemetry-tank-card ${cardStateClass}`}>
+            <div
+              key={tank.id}
+              className={`telemetry-tank-card ${pulseAnimationClass}`}
+              style={{
+                border: isCritical
+                  ? "1px solid var(--status-danger, #EF4444)"
+                  : isLow
+                  ? "1px solid var(--status-warning, #F59E0B)"
+                  : `1px solid ${fuelInfo.border}`,
+                boxShadow: isCritical
+                  ? "0 0 16px rgba(239, 68, 68, 0.25)"
+                  : isLow
+                  ? "0 0 12px rgba(245, 158, 11, 0.2)"
+                  : `0 4px 14px ${fuelInfo.glow}`,
+              }}
+            >
               {/* Card Header & Fuel Grade Badge */}
               <div className="tank-card-header-v2">
                 <div className="tank-identity">
                   <div
                     className="tank-icon-box"
                     style={{
-                      background: fuel?.color ? `linear-gradient(135deg, ${fuel.color} 0%, rgba(15,23,42,0.8) 100%)` : "var(--grad-flame)",
+                      background: `linear-gradient(135deg, ${fuelInfo.hex} 0%, rgba(15,23,42,0.85) 100%)`,
+                      border: `1px solid ${fuelInfo.hex}55`,
+                      color: "#FFFFFF",
                     }}
                   >
                     <Fuel size={22} />
                   </div>
                   <div className="tank-meta">
-                    <h3>{tank.name}</h3>
-                    <span
-                      className="fuel-tag"
-                      style={{
-                        backgroundColor: fuel?.color ? `${fuel.color}22` : "rgba(255,94,0,0.15)",
-                        color: fuel?.color || "var(--orange)",
-                        border: `1px solid ${fuel?.color || "var(--orange)"}44`,
-                      }}
-                    >
-                      {fuel?.name} • ({tank.fuelCode})
-                    </span>
+                    <h3 style={{ margin: "0 0 4px 0" }}>{tank.name}</h3>
+                    <FuelBadge fuelType={tank.fuelCode} label={`${fuelInfo.name} (${tank.fuelCode})`} />
                   </div>
                 </div>
 
-                <div className={`status-indicator-pill ${statusClass}`}>
-                  <span className="live-dot-pulse" style={{ backgroundColor: isCritical ? "var(--red)" : isLow ? "var(--amber)" : "var(--green-neon)" }}></span>
-                  {statusText}
+                <div className={`status-indicator-pill ${statusClass}`} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  {statusIcon}
+                  <span>{statusText}</span>
                 </div>
               </div>
 
@@ -273,7 +337,7 @@ export default function Inventory() {
               <div className="tank-visual-gauge-widget">
                 <div className="gauge-top-info">
                   <div className="gauge-percent-display">
-                    <span className="gauge-percent-val">{percent}</span>
+                    <span className="gauge-percent-val" style={{ color: fuelInfo.hex }}>{percent}</span>
                     <span className="gauge-percent-symbol">%</span>
                   </div>
                   <div className="gauge-vol-display">
@@ -281,22 +345,21 @@ export default function Inventory() {
                   </div>
                 </div>
 
-                <div className="fluid-progress-bar-container">
+                <div className="fluid-progress-bar-container" style={{ position: "relative", overflow: "hidden", borderRadius: "8px", background: "rgba(15, 23, 42, 0.6)", height: "14px" }}>
                   <div
-                    className="fluid-progress-bar-fill"
+                    className="fluid-progress-bar-fill liquid-wave-animation"
                     style={{
                       width: `${percent}%`,
+                      height: "100%",
+                      borderRadius: "8px",
                       background: isCritical
-                        ? "var(--grad-crimson)"
+                        ? "linear-gradient(90deg, #DC2626, #EF4444)"
                         : isLow
-                        ? "linear-gradient(90deg, #F59E0B, #FFB703)"
-                        : fuel?.color
-                        ? `linear-gradient(90deg, ${fuel.color}, #00E676)`
-                        : "var(--grad-flame)",
+                        ? "linear-gradient(90deg, #D97706, #F59E0B)"
+                        : `linear-gradient(90deg, ${fuelInfo.hex}, #10B981)`,
+                      transition: "width 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
                     }}
-                  >
-                    <div className="fluid-shimmer"></div>
-                  </div>
+                  />
                 </div>
               </div>
 
@@ -304,7 +367,7 @@ export default function Inventory() {
               <div className="telemetry-sensors-grid">
                 <div className="sensor-box">
                   <div className="sensor-icon">
-                    <Thermometer size={16} style={{ color: tank.temp > 25 ? "var(--amber)" : "var(--text-dim)" }} />
+                    <Thermometer size={16} style={{ color: tank.temp > 25 ? "var(--status-warning, #F59E0B)" : "var(--text-dim)" }} />
                   </div>
                   <div className="sensor-info">
                     <span className="sensor-lbl">Vault Temp</span>
@@ -334,11 +397,11 @@ export default function Inventory() {
 
                 <div className="sensor-box">
                   <div className="sensor-icon">
-                    <Clock size={16} style={{ color: isLow ? "var(--amber)" : "var(--text-dim)" }} />
+                    <Clock size={16} style={{ color: isLow ? "var(--status-warning, #F59E0B)" : "var(--text-dim)" }} />
                   </div>
                   <div className="sensor-info">
                     <span className="sensor-lbl">Est. Reserve</span>
-                    <span className="sensor-val" style={{ color: isLow ? "var(--amber)" : "var(--text)" }}>
+                    <span className="sensor-val" style={{ color: isLow ? "var(--status-warning, #F59E0B)" : "var(--text)" }}>
                       {estDays}
                     </span>
                   </div>
@@ -347,21 +410,42 @@ export default function Inventory() {
 
               {/* Refill Recommendation Banner */}
               {isLow && (
-                <div style={{ background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.25)", borderRadius: "10px", padding: "10px 12px", fontSize: "12px", color: "var(--amber)", display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: "10px", padding: "10px 12px", fontSize: "13px", color: "var(--status-warning, #F59E0B)", display: "flex", alignItems: "center", gap: "8px" }}>
                   <AlertTriangle size={14} style={{ flexShrink: 0 }} />
                   <span>Refill recommended within 48h to prevent supply lock</span>
                 </div>
               )}
 
-              {/* Action Button */}
-              <button
-                className="refill-action-btn btn-refill-normal"
-                disabled={refillingId === tank.id || percent >= 100}
-                onClick={() => handleRefill(tank.id, tank.name)}
-              >
-                <RefreshCw size={16} className={refillingId === tank.id ? "spin" : ""} />
-                {refillingId === tank.id ? "Refilling Bulk Stock..." : `Replenish Vault (+10,000L)`}
-              </button>
+              {/* Action Button (Depot Manager) or Read-Only Lock */}
+              {canRefill ? (
+                <button
+                  className="refill-action-btn btn-refill-normal"
+                  disabled={refillingId === tank.id || percent >= 100}
+                  onClick={() => handleRefill(tank.id, tank.name)}
+                >
+                  <RefreshCw size={16} className={refillingId === tank.id ? "spin" : ""} />
+                  {refillingId === tank.id ? "Refilling Bulk Stock..." : `Replenish Vault (+10,000L)`}
+                </button>
+              ) : (
+                <div
+                  style={{
+                    padding: "10px",
+                    borderRadius: "8px",
+                    background: "rgba(255, 255, 255, 0.05)",
+                    color: "var(--text-dim)",
+                    fontSize: "13px",
+                    textAlign: "center",
+                    fontStyle: "italic",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <Lock size={13} />
+                  Vault Refills Managed by Depot Operations
+                </div>
+              )}
             </div>
           );
         })}
@@ -371,11 +455,11 @@ export default function Inventory() {
       <div className="telemetry-table-card">
         <div className="table-toolbar">
           <div>
-            <h3 style={{ fontSize: "18px", fontWeight: "700", margin: "0 0 4px 0", color: "var(--text)" }}>
+            <h3 style={{ fontSize: "20px", fontWeight: "700", margin: "0 0 4px 0", color: "var(--text)" }}>
               Depot Storage Vault Telemetry Manifest
             </h3>
-            <p style={{ margin: 0, fontSize: "13px", color: "var(--text-dim)" }}>
-              Live telemetry sensor feed for all underground bulk fuel storage units.
+            <p style={{ margin: 0, fontSize: "14px", color: "var(--text-dim)" }}>
+              Live telemetry sensor feed for all underground bulk fuel storage units. Showing {filteredTanks.length} vaults.
             </p>
           </div>
         </div>
@@ -395,8 +479,8 @@ export default function Inventory() {
               </tr>
             </thead>
             <tbody>
-              {filteredTanks.map((tank) => {
-                const fuel = fuelOf(tank.fuelCode);
+              {paginatedTanks.map((tank) => {
+                const fuelInfo = getFuelInfo(tank.fuelCode);
                 const percent = Math.round((tank.current / tank.capacity) * 100);
                 const isLow = tank.current <= tank.threshold;
                 const isCritical = percent <= 20;
@@ -405,29 +489,16 @@ export default function Inventory() {
                   <tr key={tank.id}>
                     <td>
                       <div style={{ fontWeight: "700", color: "var(--text)" }}>{tank.name}</div>
-                      <span className="mono" style={{ fontSize: "11px", color: "var(--text-muted)" }}>
+                      <span className="mono" style={{ fontSize: "13px", color: "var(--text-muted)" }}>
                         ID: {tank.id}
                       </span>
                     </td>
                     <td>
-                      <span
-                        style={{
-                          backgroundColor: fuel?.color ? `${fuel.color}22` : "rgba(255,94,0,0.15)",
-                          color: fuel?.color || "var(--orange)",
-                          border: `1px solid ${fuel?.color || "var(--orange)"}44`,
-                          fontSize: "12px",
-                          fontWeight: "700",
-                          padding: "3px 9px",
-                          borderRadius: "6px",
-                          display: "inline-block",
-                        }}
-                      >
-                        {fuel?.name || tank.fuelCode}
-                      </span>
+                      <FuelBadge fuelType={tank.fuelCode} />
                     </td>
                     <td>
                       <span style={{ fontWeight: "700", color: "var(--text)" }}>{tank.current.toLocaleString()} L</span>
-                      <span style={{ fontSize: "11px", color: "var(--text-muted)", display: "block" }}>
+                      <span style={{ fontSize: "13px", color: "var(--text-muted)", display: "block" }}>
                         / {tank.capacity.toLocaleString()} L
                       </span>
                     </td>
@@ -441,21 +512,25 @@ export default function Inventory() {
                             style={{
                               height: "100%",
                               width: `${percent}%`,
-                              backgroundColor: isCritical ? "var(--red)" : isLow ? "var(--amber)" : fuel?.color || "var(--green)",
+                              backgroundColor: isCritical ? "var(--status-danger, #EF4444)" : isLow ? "var(--status-warning, #F59E0B)" : fuelInfo.hex,
                               borderRadius: "999px",
                             }}
                           ></div>
                         </div>
-                        <span style={{ fontSize: "12px", fontWeight: "700", width: "36px" }}>{percent}%</span>
+                        <span style={{ fontSize: "13px", fontWeight: "700", width: "36px" }}>{percent}%</span>
                       </div>
                     </td>
                     <td>
-                      <div style={{ fontSize: "12px", color: "var(--text-dim)" }}>
+                      <div style={{ fontSize: "13px", color: "var(--text-dim)" }}>
                         <span>{tank.temp}°C</span> • <span>{tank.pressure} Bar</span>
                       </div>
                     </td>
                     <td>
-                      <span className={`status-indicator-pill ${isCritical ? "critical" : isLow ? "low" : "optimal"}`}>
+                      <span
+                        className={`status-indicator-pill ${isCritical ? "critical" : isLow ? "low" : "optimal"}`}
+                        style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
+                      >
+                        {isCritical ? <ShieldAlert size={12} /> : isLow ? <AlertTriangle size={12} /> : <CheckCircle2 size={12} />}
                         {isCritical ? "CRITICAL" : isLow ? "LOW STOCK" : "OPTIMAL"}
                       </span>
                     </td>
@@ -467,11 +542,11 @@ export default function Inventory() {
                         style={{
                           padding: "6px 12px",
                           borderRadius: "8px",
-                          fontSize: "12px",
+                          fontSize: "13px",
                           fontWeight: "700",
                           background: "var(--panel-alt)",
                           border: "1px solid var(--line)",
-                          color: "var(--orange)",
+                          color: "var(--fuel-diesel, #F59E0B)",
                           cursor: "pointer",
                         }}
                       >
@@ -484,6 +559,14 @@ export default function Inventory() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          currentPage={clampedTablePage}
+          totalPages={totalPages}
+          totalRecords={filteredTanks.length}
+          pageSize={tablePageSize}
+          onPageChange={setTablePage}
+          onPageSizeChange={setTablePageSize}
+        />
       </div>
     </div>
   );

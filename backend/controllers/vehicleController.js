@@ -1,4 +1,5 @@
 const Vehicle = require('../models/Vehicle');
+const { scopeToDepot } = require('../utils/depotScope');
 
 // @desc    Get all vehicles (with live location, speed, fuelLevel, status)
 // @route   GET /api/vehicles (or GET /api/fleet)
@@ -6,7 +7,7 @@ const Vehicle = require('../models/Vehicle');
 const getVehicles = async (req, res, next) => {
   try {
     const { status, driverName, search } = req.query;
-    const filter = {};
+    let filter = {};
 
     if (status) {
       if (status === 'In Transit' || status === 'InTransit') {
@@ -31,6 +32,30 @@ const getVehicles = async (req, res, next) => {
         { driver: new RegExp(search, 'i') },
         { dest: new RegExp(search, 'i') },
       ];
+    }
+
+    filter = scopeToDepot(req, filter);
+
+    const page = parseInt(req.query.page, 10);
+    const limit = parseInt(req.query.limit, 10);
+
+    if (page || limit) {
+      const p = Math.max(1, page || 1);
+      const l = Math.max(1, limit || 10);
+      const skip = (p - 1) * l;
+      const totalRecords = await Vehicle.countDocuments(filter);
+      const totalPages = Math.ceil(totalRecords / l) || 1;
+      const paginatedVehicles = await Vehicle.find(filter).sort({ vehicleNumber: 1, vehicle: 1 }).skip(skip).limit(l);
+
+      return res.status(200).json({
+        success: true,
+        data: paginatedVehicles,
+        page: p,
+        limit: l,
+        totalRecords,
+        totalPages,
+        count: paginatedVehicles.length,
+      });
     }
 
     const vehicles = await Vehicle.find(filter).sort({ vehicleNumber: 1, vehicle: 1 });
@@ -342,6 +367,7 @@ const createVehicle = async (req, res, next) => {
       speed: speed ? Number(speed) : 0,
       fuelLevel: fuelLevel != null ? Number(fuelLevel) : 100,
       status: status || 'Available',
+      depot: req.body.depot || req.user?.depot || 'DEP-CHN-01',
       location: {
         type: 'Point',
         coordinates: [newLng, newLat],

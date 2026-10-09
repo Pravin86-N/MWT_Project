@@ -4,10 +4,12 @@
 export const USERS = [];
 
 export const FUEL_TYPES = [
-  { code: "DSL", name: "Diesel", price: 92.4, color: "var(--amber)" },
-  { code: "PTL", name: "Petrol", price: 104.8, color: "var(--blue)" },
-  { code: "LPG", name: "LPG", price: 61.2, color: "var(--green)" },
-  { code: "KRS", name: "Kerosene", price: 74.6, color: "var(--text-dim)" },
+  { code: "DSL", name: "Diesel", price: 92.4, color: "var(--fuel-diesel)" },
+  { code: "PTL", name: "Petrol", price: 104.8, color: "var(--fuel-petrol)" },
+  { code: "CNG", name: "CNG", price: 78.5, color: "var(--fuel-cng)" },
+  { code: "EV", name: "Electric / EV", price: 12.0, color: "var(--fuel-electric)" },
+  { code: "LPG", name: "LPG", price: 61.2, color: "var(--fuel-cng)" },
+  { code: "KRS", name: "Kerosene", price: 74.6, color: "var(--fuel-diesel)" },
 ];
 
 export const STATUS_FLOW = ["Pending", "Approved", "Dispatched", "InTransit", "Delivered"];

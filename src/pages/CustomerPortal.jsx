@@ -57,6 +57,30 @@ import { useNotifications } from "../context/NotificationContext";
 import NewOrderModal from "../components/NewOrderModal";
 import InvoiceModal from "../components/InvoiceModal";
 import StatusPill from "../components/StatusPill";
+import Pagination from "../components/Pagination";
+import FuelBadge from "../components/FuelBadge";
+import CountUp from "../components/CountUp";
+
+// Section 10: 6-Stage Delivery Status Timeline
+export const SIX_STAGE_TIMELINE = [
+  { id: "requested", label: "Order Requested", desc: "Fuel requisition submitted & logged." },
+  { id: "approved", label: "Approved", desc: "Credit & allocation validated." },
+  { id: "driver_assigned", label: "Driver Assigned", desc: "Depot tanker & driver allocated." },
+  { id: "dispatched", label: "Dispatched", desc: "Loaded & cleared depot gate." },
+  { id: "in_transit", label: "In Transit", desc: "Tanker en-route with live GPS." },
+  { id: "delivered", label: "Delivered", desc: "Fuel discharged & verified." },
+];
+
+export function getStageIndex(order) {
+  if (!order) return 0;
+  const s = (order.status || "").toLowerCase().replace(/[\s_-]/g, "");
+  if (s === "delivered") return 5;
+  if (s === "intransit") return 4;
+  if (s === "dispatched") return 3;
+  if (s === "assigned" || (order.driver && order.driver !== "Unassigned" && order.driver !== "—")) return 2;
+  if (s === "approved") return 1;
+  return 0; // Order Requested
+}
 
 // Custom Leaflet Icons for Customer Live Tracking Map
 const createDepotMarkerIcon = () =>
@@ -121,6 +145,12 @@ export default function CustomerPortal() {
   const [activeFaq, setActiveFaq] = useState(null);
   const [prefillData, setPrefillData] = useState(null);
   const [activeTab, setActiveTab] = useState("active");
+  const [orderPage, setOrderPage] = useState(1);
+  const [orderPageSize, setOrderPageSize] = useState(10);
+
+  useEffect(() => {
+    setOrderPage(1);
+  }, [activeTab]);
 
   // Simulated live moving coordinates for tracking map
   const [tankerPos, setTankerPos] = useState([13.0720, 80.2600]);
@@ -143,6 +173,18 @@ export default function CustomerPortal() {
   const completedDeliveries = useMemo(
     () => myOrders.filter((o) => o.status === "Delivered"),
     [myOrders]
+  );
+
+  const currentTabOrders = useMemo(
+    () => (activeTab === "active" ? activeDeliveries : completedDeliveries),
+    [activeTab, activeDeliveries, completedDeliveries]
+  );
+
+  const orderTotalPages = Math.max(1, Math.ceil(currentTabOrders.length / orderPageSize));
+  const clampedOrderPage = Math.min(orderPage, orderTotalPages);
+  const paginatedOrders = useMemo(
+    () => currentTabOrders.slice((clampedOrderPage - 1) * orderPageSize, clampedOrderPage * orderPageSize),
+    [currentTabOrders, clampedOrderPage, orderPageSize]
   );
 
   const totalLitresOrdered = useMemo(
@@ -309,8 +351,8 @@ export default function CustomerPortal() {
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <AlertTriangle size={24} style={{ color: "var(--amber)", flexShrink: 0 }} />
             <div>
-              <strong style={{ fontSize: "15px", color: "var(--text)" }}>Your company account is under verification.</strong>
-              <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--text-dim)" }}>
+              <strong style={{ fontSize: "16px", color: "var(--text)" }}>Your company account is under verification.</strong>
+              <p style={{ margin: "2px 0 0", fontSize: "14px", color: "var(--text-dim)" }}>
                 Fuel ordering is disabled until manager document review & KYC is completed. <strong style={{ color: "var(--amber)" }}>Status: Pending Review</strong>
               </p>
             </div>
@@ -370,7 +412,7 @@ export default function CustomerPortal() {
               <Truck size={18} />
             </div>
           </div>
-          <div className="kpi-val">{myOrders.length} Orders</div>
+          <div className="kpi-val"><CountUp end={myOrders.length} /> Orders</div>
           <div className="kpi-footer">
             <span className="trend-pill up">{activeDeliveries.length} Active</span>
             <span style={{ color: "var(--text-dim)" }}>{completedDeliveries.length} Delivered</span>
@@ -384,7 +426,7 @@ export default function CustomerPortal() {
               <Fuel size={18} />
             </div>
           </div>
-          <div className="kpi-val">{totalLitresOrdered.toLocaleString()} L</div>
+          <div className="kpi-val"><CountUp end={totalLitresOrdered} suffix=" L" /></div>
           <div className="kpi-footer">
             <span className="trend-pill up">Bulk Certified</span>
             <span style={{ color: "var(--text-dim)" }}>High Speed Diesel & Petrol</span>
@@ -398,7 +440,7 @@ export default function CustomerPortal() {
               <CheckCircle2 size={18} />
             </div>
           </div>
-          <div className="kpi-val">{completedDeliveries.length} Delivered</div>
+          <div className="kpi-val"><CountUp end={completedDeliveries.length} /> Delivered</div>
           <div className="kpi-footer">
             <span className="trend-pill up">100% Fulfilled</span>
             <span style={{ color: "var(--text-dim)" }}>Tax receipts ready</span>
@@ -412,7 +454,7 @@ export default function CustomerPortal() {
               <CreditCard size={18} />
             </div>
           </div>
-          <div className="kpi-val">₹{Math.round(totalSpending).toLocaleString("en-IN")}</div>
+          <div className="kpi-val"><CountUp end={Math.round(totalSpending)} prefix="₹" /></div>
           <div className="kpi-footer">
             <span className="trend-pill up">Corporate Net-30</span>
             <span style={{ color: "var(--text-dim)" }}>All time</span>
@@ -520,7 +562,7 @@ export default function CustomerPortal() {
             <div className="eta-badge-box">
               <Clock size={20} style={{ color: "var(--orange)" }} />
               <div>
-                <div style={{ fontSize: "11px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: 700 }}>
+                <div style={{ fontSize: "12px", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: 700 }}>
                   ESTIMATED ARRIVAL
                 </div>
                 <strong style={{ fontSize: "18px", color: "var(--green-neon)", fontFamily: "'Oswald', sans-serif" }}>
@@ -529,6 +571,58 @@ export default function CustomerPortal() {
               </div>
             </div>
           </div>
+
+          {/* Animated Delivery Journey Progress Tracker */}
+          {(() => {
+            const stageIdx = getStageIndex(latestActiveOrder);
+            const progressPcts = [15, 32, 50, 68, 85, 100];
+            const currentPct = progressPcts[stageIdx] || 50;
+
+            return (
+              <div className="journey-progress-container">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <Navigation size={18} style={{ color: "var(--fuel-diesel, #F59E0B)" }} />
+                    <strong style={{ fontSize: "15px" }}>Live Delivery Journey Progress</strong>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>Pipeline Stage:</span>
+                    <strong style={{ color: "var(--green-neon)", fontSize: "14px" }}>{SIX_STAGE_TIMELINE[stageIdx]?.label || "In Transit"} ({currentPct}%)</strong>
+                  </div>
+                </div>
+
+                <div className="journey-track-wrapper">
+                  <div className="journey-base-line">
+                    <div className="journey-filled-line" style={{ width: `${currentPct}%` }}></div>
+                  </div>
+
+                  {/* Traveling Delivery Truck Indicator */}
+                  <div className="journey-truck-marker" style={{ left: `${currentPct}%` }}>
+                    <Truck size={20} style={{ color: "#22C55E" }} />
+                  </div>
+                </div>
+
+                <div className="journey-step-points">
+                  <div className={`journey-step-point ${stageIdx >= 0 ? "completed" : ""}`}>
+                    <span>🏭 Depot Dispatched</span>
+                    <small>Chennai Central</small>
+                  </div>
+                  <div className={`journey-step-point ${stageIdx >= 3 ? "completed" : stageIdx >= 2 ? "active" : ""}`}>
+                    <span>🛣️ Highway In-Transit</span>
+                    <small>NH-48 Corridor</small>
+                  </div>
+                  <div className={`journey-step-point ${stageIdx >= 4 ? "completed" : stageIdx >= 3 ? "active" : ""}`}>
+                    <span>📍 Approaching Site</span>
+                    <small>Radius 2.4 km</small>
+                  </div>
+                  <div className={`journey-step-point ${stageIdx >= 5 ? "completed" : ""}`}>
+                    <span>✅ Verified Discharge</span>
+                    <small>{latestActiveOrder.site}</small>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* REAL OPENSTREETMAP LIVE TRACKING CANVAS (Requirement 7) */}
           <div className="cust-map-container-box">
@@ -564,14 +658,19 @@ export default function CustomerPortal() {
                 </Popup>
               </Marker>
 
-              {/* Glowing Route Polyline */}
+              {/* Glowing Route Polyline with Animated Moving Dash */}
               <Polyline
                 positions={[
                   [13.0827, 80.2707],
                   tankerPos,
                   [13.0600, 80.2500],
                 ]}
-                pathOptions={{ color: "#FF5E00", weight: 5, dashArray: "6,6" }}
+                pathOptions={{
+                  color: "#FF5E00",
+                  weight: 5,
+                  dashArray: "8, 8",
+                  className: "moving-dash",
+                }}
               />
             </MapContainer>
           </div>
@@ -582,7 +681,7 @@ export default function CustomerPortal() {
               <div className="driver-avatar-circle">👨‍✈️</div>
               <div>
                 <strong className="driver-name-str">{latestActiveOrder.driver || "R. Rangarajan"}</strong>
-                <div style={{ fontSize: "12px", color: "var(--text-dim)" }}>
+                <div style={{ fontSize: "13px", color: "var(--text-dim)" }}>
                   Verified Depot Tanker Driver • ⭐ 4.9 Rating
                 </div>
               </div>
@@ -596,21 +695,52 @@ export default function CustomerPortal() {
             </div>
           </div>
 
-          {/* 5. VISUAL DELIVERY TIMELINE STEPPER */}
+          {/* 5. VISUAL DELIVERY TIMELINE STEPPER (6-Stage Pipeline) */}
           <div className="delivery-timeline-stepper">
-            <h4 className="timeline-title">Delivery Progress Lifecycle</h4>
-            <div className="stepper-track">
-              {STATUS_FLOW.map((step, i) => {
-                const currentIdx = STATUS_FLOW.indexOf(latestActiveOrder.status);
+            <h4 className="timeline-title" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span>Delivery Progress Lifecycle</span>
+              <span style={{ fontSize: "12px", color: "var(--fuel-diesel, #F59E0B)", fontWeight: 600 }}>6-Stage Pipeline</span>
+            </h4>
+            <div className="stepper-track" style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: "8px" }}>
+              {SIX_STAGE_TIMELINE.map((step, i) => {
+                const currentIdx = getStageIndex(latestActiveOrder);
                 const isDone = i < currentIdx;
                 const isCurrent = i === currentIdx;
 
                 return (
-                  <div key={step} className={`stepper-node ${isDone ? "completed" : ""} ${isCurrent ? "active" : ""}`}>
-                    <div className="stepper-icon">
+                  <div key={step.id} className={`stepper-node ${isDone ? "completed" : ""} ${isCurrent ? "active" : ""}`} style={{ textAlign: "center" }}>
+                    <div
+                      className={`stepper-icon ${isCurrent ? "step-pulse" : ""}`}
+                      style={{
+                        margin: "0 auto 6px",
+                        width: "32px",
+                        height: "32px",
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        background: isDone ? "var(--fuel-cng, #22C55E)" : isCurrent ? "var(--fuel-diesel, #F59E0B)" : "rgba(148, 163, 184, 0.15)",
+                        color: isDone || isCurrent ? "#0F172A" : "var(--text-secondary, #94A3B8)",
+                        border: `2px solid ${isDone ? "var(--fuel-cng, #22C55E)" : isCurrent ? "var(--fuel-diesel, #F59E0B)" : "rgba(148, 163, 184, 0.3)"}`
+                      }}
+                    >
                       {isDone ? <CheckCircle2 size={16} /> : i + 1}
                     </div>
-                    <span className="stepper-label">{t(`status_${step}`)}</span>
+                    <span
+                      className="stepper-label"
+                      style={{
+                        display: "block",
+                        fontSize: "12px",
+                        fontWeight: isCurrent ? 700 : 500,
+                        color: isDone ? "var(--fuel-cng, #22C55E)" : isCurrent ? "var(--fuel-diesel, #F59E0B)" : "var(--text-secondary, #94A3B8)",
+                        whiteSpace: "normal",
+                        lineHeight: "1.2"
+                      }}
+                    >
+                      {step.label}
+                    </span>
                   </div>
                 );
               })}
@@ -675,69 +805,81 @@ export default function CustomerPortal() {
 
         {/* TAB 1 & 2: Active Orders / History */}
         {(activeTab === "active" || activeTab === "history") && (
-          <div className="order-cards-grid">
-            {(activeTab === "active" ? activeDeliveries : completedDeliveries).length === 0 ? (
-              <div className="loading" style={{ padding: "30px", textAlign: "center", color: "var(--text-dim)" }}>
-                No orders in this view. Click <strong>+ New Order</strong> to place a fuel delivery request.
-              </div>
-            ) : (
-              (activeTab === "active" ? activeDeliveries : completedDeliveries).map((o) => (
-                <div key={o.id} className="glass-order-card">
-                  <div className="card-top-row">
-                    <div>
-                      <span className="order-num-tag">{o.orderNumber}</span>
-                      <div style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "2px" }}>
-                        Requested: {o.createdAt ? new Date(o.createdAt).toLocaleDateString() : "Aug 28, 2026"}
-                      </div>
-                    </div>
-                    <StatusPill status={o.status} />
-                  </div>
-
-                  <div className="card-body-row">
-                    <div className="fuel-detail-chip">
-                      <Fuel size={18} style={{ color: "var(--orange)" }} />
+          <>
+            <div className="order-cards-grid">
+              {currentTabOrders.length === 0 ? (
+                <div className="loading" style={{ padding: "30px", textAlign: "center", color: "var(--text-dim)" }}>
+                  No orders in this view. Click <strong>+ New Order</strong> to place a fuel delivery request.
+                </div>
+              ) : (
+                paginatedOrders.map((o) => (
+                  <div key={o.id} className="glass-order-card">
+                    <div className="card-top-row">
                       <div>
-                        <strong style={{ fontSize: "16px" }}>{(o.qty || o.quantity || 0).toLocaleString()} Litres</strong>
-                        <div style={{ fontSize: "12px", color: "var(--text-dim)" }}>
-                          {o.fuelCode || o.fuelType} ({o.fuelCode === "DSL" || o.fuelType === "DSL" ? "Diesel" : "Petrol"})
+                        <span className="order-num-tag">{o.orderNumber}</span>
+                        <div style={{ fontSize: "13px", color: "var(--text-dim)", marginTop: "2px" }}>
+                          Requested: {o.createdAt ? new Date(o.createdAt).toLocaleDateString() : "Aug 28, 2026"}
                         </div>
                       </div>
+                      <StatusPill status={o.status} />
                     </div>
 
-                    <div className="site-detail-chip">
-                      <MapPin size={16} style={{ color: "var(--blue)" }} />
-                      <span>{o.site || o.deliveryAddress} ({o.city})</span>
+                    <div className="card-body-row">
+                      <div className="fuel-detail-chip" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <FuelBadge fuelType={o.fuelCode || o.fuelType} />
+                        <div>
+                          <strong style={{ fontSize: "16px" }}>{(o.qty || o.quantity || 0).toLocaleString()} Litres</strong>
+                        </div>
+                      </div>
+
+                      <div className="site-detail-chip">
+                        <MapPin size={16} style={{ color: "var(--blue)" }} />
+                        <span>{o.site || o.deliveryAddress} ({o.city})</span>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons Footer */}
+                    <div className="card-footer-actions">
+                      <button
+                        className="btn-ghost-sm"
+                        onClick={() => setTrackingOrder(o)}
+                      >
+                        <Navigation size={14} style={{ color: "var(--blue)" }} /> Track Order
+                      </button>
+
+                      <button
+                        className="btn-ghost-sm"
+                        onClick={() => setInvoiceOrder(o)}
+                      >
+                        <FileText size={14} style={{ color: "var(--green)" }} /> Tax Invoice
+                      </button>
+
+                      <button
+                        className="btn-ghost-sm"
+                        onClick={() => handleOrderAgain(o)}
+                        style={{ color: "var(--amber)", fontWeight: 700 }}
+                      >
+                        <RotateCcw size={14} /> Order Again
+                      </button>
                     </div>
                   </div>
+                ))
+              )}
+            </div>
 
-                  {/* Action Buttons Footer */}
-                  <div className="card-footer-actions">
-                    <button
-                      className="btn-ghost-sm"
-                      onClick={() => setTrackingOrder(o)}
-                    >
-                      <Navigation size={14} style={{ color: "var(--blue)" }} /> Track Order
-                    </button>
-
-                    <button
-                      className="btn-ghost-sm"
-                      onClick={() => setInvoiceOrder(o)}
-                    >
-                      <FileText size={14} style={{ color: "var(--green)" }} /> Tax Invoice
-                    </button>
-
-                    <button
-                      className="btn-ghost-sm"
-                      onClick={() => handleOrderAgain(o)}
-                      style={{ color: "var(--amber)", fontWeight: 700 }}
-                    >
-                      <RotateCcw size={14} /> Order Again
-                    </button>
-                  </div>
-                </div>
-              ))
+            {currentTabOrders.length > 0 && (
+              <div style={{ marginTop: "16px" }}>
+                <Pagination
+                  currentPage={clampedOrderPage}
+                  totalPages={orderTotalPages}
+                  totalRecords={currentTabOrders.length}
+                  pageSize={orderPageSize}
+                  onPageChange={setOrderPage}
+                  onPageSizeChange={setOrderPageSize}
+                />
+              </div>
             )}
-          </div>
+          </>
         )}
 
         {/* TAB 3: Invoice History */}
@@ -754,11 +896,11 @@ export default function CustomerPortal() {
                     <FileText size={24} style={{ color: "var(--green)" }} />
                   </div>
                   <div className="inv-details" style={{ flex: 1 }}>
-                    <strong style={{ fontSize: "14px", color: "var(--text)" }}>Tax Invoice #{o.orderNumber}</strong>
-                    <div style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "2px" }}>
+                    <strong style={{ fontSize: "15px", color: "var(--text)" }}>Tax Invoice #{o.orderNumber}</strong>
+                    <div style={{ fontSize: "13px", color: "var(--text-dim)", marginTop: "2px" }}>
                       Fuel: {o.qty || o.quantity} L ({o.fuelCode || o.fuelType}) • Amount: <strong style={{ color: "var(--text)" }}>₹{Math.round(o.total || ((o.qty || 100) * 89.5)).toLocaleString("en-IN")}</strong>
                     </div>
-                    <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>
+                    <div style={{ fontSize: "13px", color: "var(--text-dim)", marginTop: "2px" }}>
                       Site: {o.site || o.deliveryAddress} • Status: <span style={{ color: "var(--green-neon)", fontWeight: "700" }}>{o.status}</span>
                     </div>
                   </div>
@@ -801,17 +943,17 @@ export default function CustomerPortal() {
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       {!n.read && <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--orange)" }}></span>}
-                      <strong style={{ fontSize: "14px", color: "var(--text)" }}>{n.title}</strong>
+                      <strong style={{ fontSize: "15px", color: "var(--text)" }}>{n.title}</strong>
                     </div>
-                    <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--text-dim)" }}>{n.message}</p>
-                    <small style={{ fontSize: "11px", color: "var(--text-dim)" }}>
+                    <p style={{ margin: "4px 0 0", fontSize: "14px", color: "var(--text-dim)" }}>{n.message}</p>
+                    <small style={{ fontSize: "12px", color: "var(--text-dim)" }}>
                       {n.timestamp ? new Date(n.timestamp).toLocaleString() : ""}
                     </small>
                   </div>
                   {n.read ? (
-                    <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>Read</span>
+                    <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>Read</span>
                   ) : (
-                    <span className="pill" style={{ "--pill-color": "var(--orange)", fontSize: "11px" }}>New</span>
+                    <span className="pill" style={{ "--pill-color": "var(--orange)", fontSize: "12px" }}>New</span>
                   )}
                 </div>
               ))
@@ -823,7 +965,7 @@ export default function CustomerPortal() {
         {activeTab === "profile" && (
           <div style={{ marginTop: "16px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
             <div className="card portal-panel" style={{ padding: "20px" }}>
-              <h3 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: "700" }}>🏢 Company Profile Details</h3>
+              <h3 style={{ margin: "0 0 16px 0", fontSize: "17px", fontWeight: "700" }}>🏢 Company Profile Details</h3>
               <form onSubmit={handleUpdateProfile} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <label className="field">
                   <span>Company / Customer Name</span>
@@ -868,21 +1010,21 @@ export default function CustomerPortal() {
                 {/* Credit Limit Overview */}
                 <div style={{ background: "var(--panel-alt)", padding: "12px", borderRadius: "10px", marginTop: "4px", display: "flex", justifyContent: "space-between" }}>
                   <div>
-                    <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>CREDIT LIMIT</span>
-                    <div style={{ color: "var(--green-neon)", fontWeight: "800", fontSize: "14px" }}>₹{creditLimit.toLocaleString("en-IN")}</div>
+                    <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>CREDIT LIMIT</span>
+                    <div style={{ color: "var(--green-neon)", fontWeight: "800", fontSize: "15px" }}>₹{creditLimit.toLocaleString("en-IN")}</div>
                   </div>
                   <div>
-                    <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>USED CREDIT</span>
-                    <div style={{ color: "var(--amber)", fontWeight: "800", fontSize: "14px" }}>₹{creditUsed.toLocaleString("en-IN")}</div>
+                    <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>USED CREDIT</span>
+                    <div style={{ color: "var(--amber)", fontWeight: "800", fontSize: "15px" }}>₹{creditUsed.toLocaleString("en-IN")}</div>
                   </div>
                   <div>
-                    <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>AVAILABLE</span>
-                    <div style={{ color: "var(--blue)", fontWeight: "800", fontSize: "14px" }}>₹{availableCredit.toLocaleString("en-IN")}</div>
+                    <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>AVAILABLE</span>
+                    <div style={{ color: "var(--blue)", fontWeight: "800", fontSize: "15px" }}>₹{availableCredit.toLocaleString("en-IN")}</div>
                   </div>
                 </div>
 
                 {profileStatus && (
-                  <div style={{ color: profileStatus.type === "success" ? "var(--green-neon)" : "var(--red)", fontSize: "12px" }}>
+                  <div style={{ color: profileStatus.type === "success" ? "var(--green-neon)" : "var(--red)", fontSize: "13px" }}>
                     {profileStatus.text}
                   </div>
                 )}
@@ -899,7 +1041,7 @@ export default function CustomerPortal() {
             </div>
 
             <div className="card portal-panel" style={{ padding: "20px" }}>
-              <h3 style={{ margin: "0 0 16px 0", fontSize: "16px", fontWeight: "700" }}>🔒 Change Account Password</h3>
+              <h3 style={{ margin: "0 0 16px 0", fontSize: "17px", fontWeight: "700" }}>🔒 Change Account Password</h3>
               <form onSubmit={handleChangePassword} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <label className="field">
                   <span>Current Password</span>
@@ -922,7 +1064,7 @@ export default function CustomerPortal() {
                   />
                 </label>
                 {pwStatus && (
-                  <div style={{ color: pwStatus.type === "success" ? "var(--green-neon)" : "var(--red)", fontSize: "12px" }}>
+                  <div style={{ color: pwStatus.type === "success" ? "var(--green-neon)" : "var(--red)", fontSize: "13px" }}>
                     {pwStatus.text}
                   </div>
                 )}
@@ -952,8 +1094,8 @@ export default function CustomerPortal() {
                 <FileText size={24} style={{ color: "var(--green)" }} />
               </div>
               <div className="inv-details">
-                <strong style={{ fontSize: "14px" }}>#INV-{o.orderNumber || o.id}</strong>
-                <div style={{ fontSize: "12px", color: "var(--text-dim)" }}>
+                <strong style={{ fontSize: "15px" }}>#INV-{o.orderNumber || o.id}</strong>
+                <div style={{ fontSize: "13px", color: "var(--text-dim)" }}>
                   Date: {o.createdAt ? new Date(o.createdAt).toLocaleDateString() : "Recent"} • Amount: <strong style={{ color: "var(--text)" }}>₹{(o.total || ((o.qty || 100) * 89.5)).toLocaleString("en-IN")}</strong>
                 </div>
               </div>
@@ -981,7 +1123,7 @@ export default function CustomerPortal() {
             <div>
               <span className="analytics-lbl">Total Fuel Received</span>
               <strong className="analytics-val">{totalLitresOrdered.toLocaleString()} L</strong>
-              <div style={{ fontSize: "11px", color: "var(--green-neon)", marginTop: "2px" }}>
+              <div style={{ fontSize: "12px", color: "var(--green-neon)", marginTop: "2px" }}>
                 ↑ 12% vs Previous Month
               </div>
             </div>
@@ -994,7 +1136,7 @@ export default function CustomerPortal() {
             <div>
               <span className="analytics-lbl">Total Monthly Spend</span>
               <strong className="analytics-val">₹{(totalLitresOrdered * 89.5).toLocaleString("en-IN")}</strong>
-              <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>
+              <div style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "2px" }}>
                 Net-30 Corporate Billing
               </div>
             </div>
@@ -1007,7 +1149,7 @@ export default function CustomerPortal() {
             <div>
               <span className="analytics-lbl">Delivery Success Rate</span>
               <strong className="analytics-val">100%</strong>
-              <div style={{ fontSize: "11px", color: "var(--green-neon)", marginTop: "2px" }}>
+              <div style={{ fontSize: "12px", color: "var(--green-neon)", marginTop: "2px" }}>
                 Zero Discharge Defect
               </div>
             </div>
@@ -1020,10 +1162,13 @@ export default function CustomerPortal() {
           ========================================================================= */}
       {trackingOrder && (
         <div className="modal-backdrop" onClick={() => setTrackingOrder(null)}>
-          <div className="modal-card tracking-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "560px" }}>
+          <div className="modal-card tracking-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "600px", maxHeight: "90vh", overflowY: "auto" }}>
             <div className="modal-head">
               <div>
-                <h3 style={{ margin: 0 }}>Delivery Status: {trackingOrder.orderNumber}</h3>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <h3 style={{ margin: 0 }}>Delivery Status: {trackingOrder.orderNumber}</h3>
+                  <FuelBadge fuelType={trackingOrder.fuelCode || trackingOrder.fuelType} />
+                </div>
                 <p className="cell-dim" style={{ margin: "2px 0 0" }}>{trackingOrder.customer} • {trackingOrder.site}</p>
               </div>
               <button className="icon-btn" onClick={() => setTrackingOrder(null)}>
@@ -1034,40 +1179,86 @@ export default function CustomerPortal() {
             <div className="tracking-body" style={{ padding: "16px" }}>
               <div className="tracker-badge-box" style={{ display: "flex", gap: "12px", background: "var(--grad-dark-panel)", padding: "14px", borderRadius: "12px", border: "1px solid var(--line)" }}>
                 <Truck size={28} className="icon-blue" />
-                <div>
+                <div style={{ flex: 1 }}>
                   <strong style={{ color: "var(--text)" }}>Assigned Driver: {trackingOrder.driver || "Pending Manager Assignment"}</strong>
-                  <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--text-dim)" }}>
-                    Vehicle Tanker: <strong style={{ color: "var(--orange)" }}>{trackingOrder.vehicle || "Unassigned"}</strong>
+                  <p style={{ margin: "2px 0 0", fontSize: "14px", color: "var(--text-dim)" }}>
+                    Vehicle Tanker: <strong style={{ color: "var(--fuel-diesel, #F59E0B)" }}>{trackingOrder.vehicle || "Unassigned"}</strong>
+                    {trackingOrder.qty && ` • ${trackingOrder.qty.toLocaleString()} Litres`}
                   </p>
                 </div>
               </div>
 
+              {/* Live Map if vehicle is assigned */}
+              {trackingOrder.vehicle && trackingOrder.vehicle !== "Unassigned" && trackingOrder.vehicle !== "—" && (
+                <div style={{ height: "180px", borderRadius: "12px", overflow: "hidden", marginTop: "14px", border: "1px solid var(--line)" }}>
+                  <MapContainer
+                    center={tankerPos}
+                    zoom={12}
+                    scrollWheelZoom={false}
+                    style={{ height: "100%", width: "100%" }}
+                  >
+                    <CustomerMapRecenter center={tankerPos} />
+                    <TileLayer
+                      url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                      attribution="&copy; OpenStreetMap"
+                    />
+                    <Marker position={tankerPos} icon={createTruckMarkerIcon()}>
+                      <Popup>
+                        🚛 {trackingOrder.vehicle}<br />
+                        Driver: {trackingOrder.driver}
+                      </Popup>
+                    </Marker>
+                    <Marker position={[13.0600, 80.2500]} icon={createCustomerMarkerIcon()}>
+                      <Popup>🏥 Delivery Site: {trackingOrder.site || "Customer Site"}</Popup>
+                    </Marker>
+                    <Polyline
+                      positions={[tankerPos, [13.0600, 80.2500]]}
+                      pathOptions={{ color: "var(--fuel-diesel, #F59E0B)", weight: 4, dashArray: "6,6" }}
+                    />
+                  </MapContainer>
+                </div>
+              )}
+
               <div className="tracking-timeline-box" style={{ marginTop: "16px" }}>
-                <h4 style={{ margin: "0 0 12px 0" }}>Dispatch Lifecycle Progress</h4>
-                <ol className="timeline">
-                  {STATUS_FLOW.map((step, i) => {
-                    const currentIdx = STATUS_FLOW.indexOf(trackingOrder.status);
-                    const isDone = i <= currentIdx;
+                <h4 style={{ margin: "0 0 12px 0", fontSize: "15px", fontWeight: 700 }}>Dispatch Lifecycle (6-Stage Pipeline)</h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {SIX_STAGE_TIMELINE.map((step, i) => {
+                    const currentIdx = getStageIndex(trackingOrder);
+                    const isDone = i < currentIdx;
                     const isCurrent = i === currentIdx;
                     return (
-                      <li
-                        key={step}
-                        className={`timeline-step ${isDone ? "done" : ""} ${isCurrent ? "active-step" : ""}`}
-                      >
-                        <div>
-                          <strong>{t(`status_${step}`)}</strong>
-                          <p className="step-desc">
-                            {step === "Pending" && "Fuel request received & pending manager review."}
-                            {step === "Approved" && "Credit check passed & depot stock reserved."}
-                            {step === "Dispatched" && "Driver and tanker assigned; cargo loaded."}
-                            {step === "InTransit" && "Tanker en-route via Tamil Nadu satellite GPS radar."}
-                            {step === "Delivered" && "Fuel discharged & digital meter tax receipt issued."}
-                          </p>
+                      <div key={step.id} style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+                        <div
+                          className={isCurrent ? "step-pulse" : ""}
+                          style={{
+                            width: "28px",
+                            height: "28px",
+                            borderRadius: "50%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            background: isDone ? "var(--fuel-cng, #22C55E)" : isCurrent ? "var(--fuel-diesel, #F59E0B)" : "rgba(148, 163, 184, 0.15)",
+                            color: isDone || isCurrent ? "#0F172A" : "var(--text-secondary, #94A3B8)",
+                            border: `2px solid ${isDone ? "var(--fuel-cng, #22C55E)" : isCurrent ? "var(--fuel-diesel, #F59E0B)" : "rgba(148, 163, 184, 0.3)"}`
+                          }}
+                        >
+                          {isDone ? <CheckCircle2 size={16} /> : i + 1}
                         </div>
-                      </li>
+                        <div>
+                          <div style={{ color: isDone ? "var(--fuel-cng, #22C55E)" : isCurrent ? "var(--fuel-diesel, #F59E0B)" : "var(--text-secondary, #94A3B8)", fontWeight: isCurrent ? 700 : 600, fontSize: "14px" }}>
+                            {step.label}
+                          </div>
+                          <div style={{ fontSize: "12px", color: "var(--text-dim, #94A3B8)" }}>
+                            {step.desc}
+                          </div>
+                        </div>
+                      </div>
                     );
                   })}
-                </ol>
+                </div>
               </div>
             </div>
           </div>
@@ -1092,13 +1283,13 @@ export default function CustomerPortal() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "10px 0" }}>
               <div style={{ background: "var(--grad-dark-panel)", border: "1px solid var(--line)", padding: "16px", borderRadius: "14px" }}>
-                <div style={{ fontSize: "12px", color: "var(--orange)", fontWeight: "700" }}>
+                <div style={{ fontSize: "13px", color: "var(--orange)", fontWeight: "700" }}>
                   TOLL-FREE DISPATCH HOTLINE
                 </div>
                 <div style={{ fontSize: "22px", fontWeight: "900", color: "#F8FAFC", margin: "4px 0" }}>
                   📞 +91 1800-419-FUEL (3835)
                 </div>
-                <div style={{ fontSize: "12px", color: "var(--text-dim)" }}>
+                <div style={{ fontSize: "13px", color: "var(--text-dim)" }}>
                   24/7 Emergency Rerouting, Rescheduling & Priority Support
                 </div>
               </div>
@@ -1107,8 +1298,8 @@ export default function CustomerPortal() {
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   <MessageSquare size={20} style={{ color: "var(--green-neon)" }} />
                   <div>
-                    <strong style={{ fontSize: "14px", color: "#F8FAFC" }}>Live Dispatch Agent Chat</strong>
-                    <div style={{ fontSize: "12px", color: "var(--green-neon)" }}>🟢 4 Dispatch Officers Online Now</div>
+                    <strong style={{ fontSize: "15px", color: "#F8FAFC" }}>Live Dispatch Agent Chat</strong>
+                    <div style={{ fontSize: "13px", color: "var(--green-neon)" }}>🟢 4 Dispatch Officers Online Now</div>
                   </div>
                 </div>
                 <button
@@ -1123,7 +1314,7 @@ export default function CustomerPortal() {
               </div>
 
               <div>
-                <h4 style={{ margin: "0 0 10px 0", fontSize: "14px", fontWeight: "700" }}>Frequently Asked Questions</h4>
+                <h4 style={{ margin: "0 0 10px 0", fontSize: "16px", fontWeight: "700" }}>Frequently Asked Questions</h4>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                   {FAQS.map((faq, i) => (
                     <div
@@ -1137,12 +1328,12 @@ export default function CustomerPortal() {
                       }}
                       onClick={() => setActiveFaq(activeFaq === i ? null : i)}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: "600", fontSize: "13px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: "600", fontSize: "14px" }}>
                         <span>{faq.q}</span>
                         {activeFaq === i ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                       </div>
                       {activeFaq === i && (
-                        <p style={{ margin: "8px 0 0 0", fontSize: "12px", color: "var(--text-dim)", lineHeight: "1.4" }}>
+                        <p style={{ margin: "8px 0 0 0", fontSize: "13px", color: "var(--text-dim)", lineHeight: "1.4" }}>
                           {faq.a}
                         </p>
                       )}

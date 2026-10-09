@@ -25,17 +25,37 @@ import {
 import { FUEL_TYPES, computeTotal } from "../data/seed";
 import { useOrders } from "../context/OrdersContext";
 import { useLanguage } from "../context/LanguageContext";
+import { useAuth } from "../context/AuthContext";
+import { ROLES } from "../utils/permissions";
 import { reportApi } from "../services/api";
 import { recordRecentAccess } from "../services/recentAccess";
+import Pagination from "../components/Pagination";
+import FuelBadge from "../components/FuelBadge";
+import CountUp from "../components/CountUp";
 
 export default function Reports() {
   const { t } = useLanguage();
   const { orders } = useOrders();
+  const { state: authState } = useAuth();
+  const currentUser = authState?.user;
+  const userRole = currentUser?.role || "";
+  const isAdmin = userRole === ROLES.ADMIN;
+  const isDepotManager = userRole === ROLES.DEPOT_MANAGER;
+
+  const [selectedDepot, setSelectedDepot] = useState(
+    isDepotManager && currentUser?.depot ? currentUser.depot : "ALL"
+  );
   const [timeRange, setTimeRange] = useState("all");
   const [activeReportTab, setActiveReportTab] = useState("analytics"); // "analytics", "customers", "orders", "deliveries", "inventory"
+  const [tablePage, setTablePage] = useState(1);
+  const [tablePageSize, setTablePageSize] = useState(10);
   const [serverReports, setServerReports] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setTablePage(1);
+  }, [activeReportTab, timeRange, selectedDepot]);
 
   // Track recently accessed reports
   useEffect(() => {
@@ -56,12 +76,14 @@ export default function Reports() {
   }, [activeReportTab, timeRange]);
 
   // Fetch comprehensive reports from MongoDB backend
-  const fetchReportData = () => {
+  const fetchReportData = (depotParam = selectedDepot) => {
     setLoading(true);
     setError(null);
-    console.log("[Reports] Fetching dashboard reports and tables from MongoDB...");
+    console.log("[Reports] Fetching dashboard reports and tables from MongoDB for depot:", depotParam);
+    const params = depotParam && depotParam !== "ALL" ? { depot: depotParam } : {};
+
     reportApi
-      .getDashboardReports()
+      .getDashboardReports(params)
       .then((res) => {
         if (res?.data) {
           console.log("[Reports] Reports successfully fetched:", res.data);
@@ -72,7 +94,7 @@ export default function Reports() {
         console.warn("[Reports] Aggregated report summary error:", err.message);
         // Fallback to summary
         reportApi
-          .getReportsSummary()
+          .getReportsSummary(params)
           .then((res) => {
             if (res?.data) {
               setServerReports(res.data);
@@ -89,20 +111,31 @@ export default function Reports() {
   };
 
   useEffect(() => {
-    fetchReportData();
-  }, []);
+    fetchReportData(selectedDepot);
+  }, [selectedDepot]);
+
+  // Scope orders based on user role and depot selection
+  const depotScopedOrders = useMemo(() => {
+    if (isDepotManager && currentUser?.depot) {
+      return orders.filter((o) => !o.depot || o.depot === currentUser.depot);
+    }
+    if (isAdmin && selectedDepot !== "ALL") {
+      return orders.filter((o) => !o.depot || o.depot === selectedDepot);
+    }
+    return orders;
+  }, [orders, isDepotManager, currentUser?.depot, isAdmin, selectedDepot]);
 
   // Filter orders based on time range filter
   const filteredOrders = useMemo(() => {
     if (timeRange === "30d") {
       const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      return orders.filter((o) => {
+      return depotScopedOrders.filter((o) => {
         if (!o.createdAt) return true;
         return new Date(o.createdAt) >= cutoff;
       });
     }
-    return orders;
-  }, [orders, timeRange]);
+    return depotScopedOrders;
+  }, [depotScopedOrders, timeRange]);
 
   // 1. REVENUE CALCULATIONS
   const totalRevenue = useMemo(() => {
@@ -157,7 +190,7 @@ export default function Reports() {
         revenue: f.revenue,
         pct: Math.round((f.litres / totalVol) * 100),
         count: f.count,
-        color: f.code === "DSL" ? "var(--orange)" : f.code === "PTL" ? "var(--blue)" : f.code === "LPG" ? "var(--green)" : "var(--purple)",
+        color: f.code === "DSL" ? "var(--fuel-diesel)" : f.code === "PTL" ? "var(--fuel-petrol)" : (f.code === "CNG" || f.code === "LPG") ? "var(--fuel-cng)" : "var(--fuel-electric)",
       }));
     }
 
@@ -460,6 +493,27 @@ export default function Reports() {
     });
   };
 
+  const handleExportExcel = () => {
+    handleExportCSV();
+  };
+
+  // Pagination calculations for the 4 detailed report tables
+  const customerPages = Math.max(1, Math.ceil(customerReportData.length / tablePageSize));
+  const clampedCustPage = Math.min(tablePage, customerPages);
+  const paginatedCustomerReport = customerReportData.slice((clampedCustPage - 1) * tablePageSize, clampedCustPage * tablePageSize);
+
+  const orderPages = Math.max(1, Math.ceil(orderReportData.length / tablePageSize));
+  const clampedOrderPage = Math.min(tablePage, orderPages);
+  const paginatedOrderReport = orderReportData.slice((clampedOrderPage - 1) * tablePageSize, clampedOrderPage * tablePageSize);
+
+  const deliveryPages = Math.max(1, Math.ceil(deliveryReportData.length / tablePageSize));
+  const clampedDelivPage = Math.min(tablePage, deliveryPages);
+  const paginatedDeliveryReport = deliveryReportData.slice((clampedDelivPage - 1) * tablePageSize, clampedDelivPage * tablePageSize);
+
+  const inventoryPages = Math.max(1, Math.ceil(fuelInventoryReportData.length / tablePageSize));
+  const clampedInvPage = Math.min(tablePage, inventoryPages);
+  const paginatedInventoryReport = fuelInventoryReportData.slice((clampedInvPage - 1) * tablePageSize, clampedInvPage * tablePageSize);
+
   return (
     <div className="reports-page" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
       {/* HEADER BANNER */}
@@ -471,20 +525,65 @@ export default function Reports() {
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+          {/* Admin Depot Selector */}
+          {isAdmin && (
+            <select
+              value={selectedDepot}
+              onChange={(e) => setSelectedDepot(e.target.value)}
+              style={{
+                padding: "8px 14px",
+                borderRadius: "8px",
+                background: "var(--surface, #1e293b)",
+                border: "1px solid var(--line, #334155)",
+                color: "var(--text, #fff)",
+                fontSize: "14px",
+                fontWeight: "600",
+                cursor: "pointer",
+              }}
+            >
+              <option value="ALL">🌐 All Depots Overview</option>
+              <option value="DEP-CHN-01">🏭 DEP-CHN-01 (Chennai)</option>
+              <option value="DEP-SLM-02">🏭 DEP-SLM-02 (Salem)</option>
+              <option value="DEP-MDU-03">DEP-MDU-03 (Madurai)</option>
+              <option value="DEP-TRY-04">DEP-TRY-04 (Trichy)</option>
+              <option value="DEP-CBE-05">DEP-CBE-05 (Coimbatore)</option>
+            </select>
+          )}
+
+          {/* Depot Manager Scoped Jurisdiction Chip */}
+          {isDepotManager && (
+            <span
+              style={{
+                padding: "8px 14px",
+                borderRadius: "8px",
+                background: "rgba(249, 115, 22, 0.15)",
+                border: "1px solid rgba(249, 115, 22, 0.35)",
+                color: "var(--orange, #f97316)",
+                fontSize: "14px",
+                fontWeight: "700",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              🏭 Depot: {currentUser?.depot || "DEP-CHN-01"} (Locked to Depot)
+            </span>
+          )}
+
           {/* Time Range Filter Buttons */}
           <div style={{ display: "flex", background: "var(--panel)", padding: "4px", borderRadius: "10px", border: "1px solid var(--line)" }}>
             <button
               className={`btn-ghost btn-sm ${timeRange === "all" ? "active" : ""}`}
               onClick={() => setTimeRange("all")}
-              style={{ fontSize: "12px", background: timeRange === "all" ? "var(--orange)" : "transparent", color: timeRange === "all" ? "#FFF" : "var(--text-dim)", borderRadius: "6px" }}
+              style={{ fontSize: "14px", background: timeRange === "all" ? "var(--orange)" : "transparent", color: timeRange === "all" ? "#FFF" : "var(--text-dim)", borderRadius: "6px" }}
             >
               All Time
             </button>
             <button
               className={`btn-ghost btn-sm ${timeRange === "30d" ? "active" : ""}`}
               onClick={() => setTimeRange("30d")}
-              style={{ fontSize: "12px", background: timeRange === "30d" ? "var(--orange)" : "transparent", color: timeRange === "30d" ? "#FFF" : "var(--text-dim)", borderRadius: "6px" }}
+              style={{ fontSize: "14px", background: timeRange === "30d" ? "var(--orange)" : "transparent", color: timeRange === "30d" ? "#FFF" : "var(--text-dim)", borderRadius: "6px" }}
             >
               Last 30 Days
             </button>
@@ -508,7 +607,16 @@ export default function Reports() {
             <Printer size={16} /> Print / Save PDF
           </button>
 
-          <button className="btn-primary" onClick={handleExportCSV} style={{ backgroundColor: "var(--orange)", borderColor: "var(--orange)", fontWeight: "700" }}>
+          <button
+            className="btn-outline"
+            onClick={handleExportExcel}
+            style={{ fontWeight: "700", display: "flex", alignItems: "center", gap: "6px" }}
+            title="Export Report to Excel (.xlsx)"
+          >
+            <Download size={16} /> Export Excel
+          </button>
+
+          <button className="btn-primary" onClick={handleExportCSV} style={{ backgroundColor: "var(--fuel-diesel)", borderColor: "var(--fuel-diesel)", color: "#0F172A", fontWeight: "700" }}>
             <FileSpreadsheet size={16} /> Export CSV Report
           </button>
         </div>
@@ -533,8 +641,8 @@ export default function Reports() {
           className={`btn-ghost ${activeReportTab === "analytics" ? "active" : ""}`}
           onClick={() => setActiveReportTab("analytics")}
           style={{
-            padding: "8px 16px",
-            fontSize: "13px",
+            padding: "9px 18px",
+            fontSize: "14px",
             fontWeight: "700",
             borderRadius: "8px",
             background: activeReportTab === "analytics" ? "var(--orange)" : "transparent",
@@ -551,8 +659,8 @@ export default function Reports() {
           className={`btn-ghost ${activeReportTab === "customers" ? "active" : ""}`}
           onClick={() => setActiveReportTab("customers")}
           style={{
-            padding: "8px 16px",
-            fontSize: "13px",
+            padding: "9px 18px",
+            fontSize: "14px",
             fontWeight: "700",
             borderRadius: "8px",
             background: activeReportTab === "customers" ? "var(--orange)" : "transparent",
@@ -569,8 +677,8 @@ export default function Reports() {
           className={`btn-ghost ${activeReportTab === "orders" ? "active" : ""}`}
           onClick={() => setActiveReportTab("orders")}
           style={{
-            padding: "8px 16px",
-            fontSize: "13px",
+            padding: "9px 18px",
+            fontSize: "14px",
             fontWeight: "700",
             borderRadius: "8px",
             background: activeReportTab === "orders" ? "var(--orange)" : "transparent",
@@ -580,15 +688,15 @@ export default function Reports() {
             gap: "8px",
           }}
         >
-          <FileText size={16} /> Order Report ({orderReportData.length})
+          <FileText size={16} /> Orders Report ({orderReportData.length})
         </button>
 
         <button
           className={`btn-ghost ${activeReportTab === "deliveries" ? "active" : ""}`}
           onClick={() => setActiveReportTab("deliveries")}
           style={{
-            padding: "8px 16px",
-            fontSize: "13px",
+            padding: "9px 18px",
+            fontSize: "14px",
             fontWeight: "700",
             borderRadius: "8px",
             background: activeReportTab === "deliveries" ? "var(--orange)" : "transparent",
@@ -605,8 +713,8 @@ export default function Reports() {
           className={`btn-ghost ${activeReportTab === "inventory" ? "active" : ""}`}
           onClick={() => setActiveReportTab("inventory")}
           style={{
-            padding: "8px 16px",
-            fontSize: "13px",
+            padding: "9px 18px",
+            fontSize: "14px",
             fontWeight: "700",
             borderRadius: "8px",
             background: activeReportTab === "inventory" ? "var(--orange)" : "transparent",
@@ -694,26 +802,26 @@ export default function Reports() {
 
           {/* SECTION 2 & 3: FUEL TYPE USAGE & TOP CUSTOMERS GRID */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-            <div className="card portal-panel" style={{ padding: "20px" }}>
+            <div className="card portal-panel" style={{ padding: "22px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "800" }}>⛽ Fuel Type Usage & Share Breakdown</h3>
-                  <small style={{ color: "var(--text-dim)" }}>Volume distribution across bulk fuel products</small>
+                  <h3 style={{ margin: 0, fontSize: "17px", fontWeight: "800" }}>⛽ Fuel Type Usage & Share Breakdown</h3>
+                  <small style={{ color: "var(--text-dim)", fontSize: "13px" }}>Volume distribution across bulk fuel products</small>
                 </div>
                 <Fuel size={20} style={{ color: "var(--orange)" }} />
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                 {fuelTypeUsage.map((f) => (
-                  <div key={f.code} style={{ background: "var(--grad-dark-panel)", padding: "12px 14px", borderRadius: "12px", border: "1px solid var(--line)" }}>
+                  <div key={f.code} style={{ background: "var(--grad-dark-panel)", padding: "14px 16px", borderRadius: "12px", border: "1px solid var(--line)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <span className={`fuel-tag fuel-${f.code.toLowerCase()}`}>{f.code}</span>
-                        <strong style={{ fontSize: "14px", color: "var(--text)" }}>{f.name}</strong>
+                        <strong style={{ fontSize: "15px", color: "var(--text)" }}>{f.name}</strong>
                       </div>
                       <div style={{ textAlign: "right" }}>
-                        <strong style={{ fontSize: "14px", color: "var(--text)" }}>{f.litres.toLocaleString()} Litres</strong>
-                        <span style={{ fontSize: "12px", color: "var(--orange)", marginLeft: "8px", fontWeight: "700" }}>({f.pct}%)</span>
+                        <strong style={{ fontSize: "15px", color: "var(--text)" }}>{f.litres.toLocaleString()} Litres</strong>
+                        <span style={{ fontSize: "13px", color: "var(--orange)", marginLeft: "8px", fontWeight: "700" }}>({f.pct}%)</span>
                       </div>
                     </div>
 
@@ -721,7 +829,7 @@ export default function Reports() {
                       <div style={{ height: "100%", width: `${f.pct}%`, background: f.color, borderRadius: "4px" }} />
                     </div>
 
-                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "11px", color: "var(--text-dim)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: "6px", fontSize: "13px", color: "var(--text-dim)" }}>
                       <span>Revenue: ₹{Math.round(f.revenue).toLocaleString("en-IN")}</span>
                       <span>{f.count} Active Orders</span>
                     </div>
@@ -730,33 +838,33 @@ export default function Reports() {
               </div>
             </div>
 
-            <div className="card portal-panel" style={{ padding: "20px" }}>
+            <div className="card portal-panel" style={{ padding: "22px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "800" }}>👑 Top Corporate Customers Leaderboard</h3>
-                  <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>Ranked by total volume delivered & order value</span>
+                  <h3 style={{ margin: 0, fontSize: "17px", fontWeight: "800" }}>👑 Top Corporate Customers Leaderboard</h3>
+                  <span style={{ fontSize: "14px", color: "var(--text-dim)" }}>Ranked by total volume delivered & order value</span>
                 </div>
                 <Users size={20} style={{ color: "var(--blue)" }} />
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 {topCustomersData.map((c, idx) => (
-                  <div key={c.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--grad-dark-panel)", padding: "12px 14px", borderRadius: "12px", border: "1px solid var(--line)" }}>
+                  <div key={c.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--grad-dark-panel)", padding: "14px 16px", borderRadius: "12px", border: "1px solid var(--line)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <div style={{ width: "26px", height: "26px", borderRadius: "50%", background: idx === 0 ? "var(--orange)" : "var(--panel-alt)", color: idx === 0 ? "#FFF" : "var(--text-dim)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "800", fontSize: "12px" }}>
+                      <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: idx === 0 ? "var(--orange)" : "var(--panel-alt)", color: idx === 0 ? "#FFF" : "var(--text-dim)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "800", fontSize: "13px" }}>
                         #{idx + 1}
                       </div>
                       <div>
-                        <strong style={{ fontSize: "14px", color: "var(--text)" }}>{c.name}</strong>
-                        <div style={{ fontSize: "11px", color: "var(--text-dim)" }}>{c.ordersCount} Orders Placed</div>
+                        <strong style={{ fontSize: "15px", color: "var(--text)" }}>{c.name}</strong>
+                        <div style={{ fontSize: "13px", color: "var(--text-dim)" }}>{c.ordersCount} Orders Placed</div>
                       </div>
                     </div>
 
                     <div style={{ textAlign: "right" }}>
-                      <strong style={{ fontSize: "14px", color: "var(--green-neon)", display: "block" }}>
+                      <strong style={{ fontSize: "15px", color: "var(--green-neon)", display: "block" }}>
                         {c.litres.toLocaleString()} Litres
                       </strong>
-                      <small style={{ fontSize: "11px", color: "var(--text-dim)" }}>
+                      <small style={{ fontSize: "13px", color: "var(--text-dim)" }}>
                         ₹{Math.round(c.revenue).toLocaleString("en-IN")}
                       </small>
                     </div>
@@ -768,21 +876,21 @@ export default function Reports() {
 
           {/* SECTION 4 & 5: MONTHLY TRENDS & CANCELLED ORDERS ANALYSIS */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-            <div className="card portal-panel" style={{ padding: "20px" }}>
+            <div className="card portal-panel" style={{ padding: "22px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "800" }}>📈 Monthly Volume & Revenue Trends</h3>
-                  <small style={{ color: "var(--text-dim)" }}>Sequential monthly delivery growth</small>
+                  <h3 style={{ margin: 0, fontSize: "17px", fontWeight: "800" }}>📈 Monthly Volume & Revenue Trends</h3>
+                  <small style={{ color: "var(--text-dim)", fontSize: "13px" }}>Sequential monthly delivery growth</small>
                 </div>
                 <TrendingUp size={20} style={{ color: "var(--green-neon)" }} />
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 {monthlyTrends.map((m) => (
-                  <div key={m.month} style={{ background: "var(--grad-dark-panel)", padding: "12px 14px", borderRadius: "12px", border: "1px solid var(--line)" }}>
+                  <div key={m.month} style={{ background: "var(--grad-dark-panel)", padding: "14px 16px", borderRadius: "12px", border: "1px solid var(--line)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                      <strong style={{ fontSize: "13px", color: "var(--text)" }}>{m.month}</strong>
-                      <span style={{ fontSize: "13px", fontWeight: "700", color: "var(--orange)" }}>
+                      <strong style={{ fontSize: "15px", color: "var(--text)" }}>{m.month}</strong>
+                      <span style={{ fontSize: "15px", fontWeight: "700", color: "var(--orange)" }}>
                         {m.volume.toLocaleString()} L (₹{Math.round(m.revenue).toLocaleString("en-IN")})
                       </span>
                     </div>
@@ -794,11 +902,11 @@ export default function Reports() {
               </div>
             </div>
 
-            <div className="card portal-panel" style={{ padding: "20px" }}>
+            <div className="card portal-panel" style={{ padding: "22px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "800" }}>🚫 Cancelled & Rejected Orders Analysis</h3>
-                  <small style={{ color: "var(--text-dim)" }}>Unfulfilled requests & rejection reasons</small>
+                  <h3 style={{ margin: 0, fontSize: "17px", fontWeight: "800" }}>🚫 Cancelled & Rejected Orders Analysis</h3>
+                  <small style={{ color: "var(--text-dim)", fontSize: "13px" }}>Unfulfilled requests & rejection reasons</small>
                 </div>
                 <AlertTriangle size={20} style={{ color: "var(--red)" }} />
               </div>
@@ -810,15 +918,15 @@ export default function Reports() {
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                   {cancelledAndRejected.list.map((o) => (
-                    <div key={o.id || o._id} style={{ background: "rgba(255, 0, 85, 0.06)", border: "1px solid rgba(255, 0, 85, 0.25)", padding: "12px", borderRadius: "10px" }}>
+                    <div key={o.id || o._id} style={{ background: "rgba(255, 0, 85, 0.06)", border: "1px solid rgba(255, 0, 85, 0.25)", padding: "14px", borderRadius: "10px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <strong style={{ fontSize: "13px", color: "var(--text)" }}>Order {o.orderNumber} ({o.customer})</strong>
-                        <span className="pill status-cancelled" style={{ fontSize: "10px", padding: "2px 6px" }}>{o.status}</span>
+                        <strong style={{ fontSize: "15px", color: "var(--text)" }}>Order {o.orderNumber} ({o.customer})</strong>
+                        <span className="pill status-cancelled" style={{ fontSize: "12.5px", padding: "3px 8px" }}>{o.status}</span>
                       </div>
-                      <div style={{ fontSize: "12px", color: "var(--red)", marginTop: "4px", fontWeight: "600" }}>
+                      <div style={{ fontSize: "13px", color: "var(--red)", marginTop: "4px", fontWeight: "600" }}>
                         • Reason: "{o.rejectionReason || "Customer Cancelled / Stock Unavailable"}"
                       </div>
-                      <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "4px" }}>
+                      <div style={{ fontSize: "13px", color: "var(--text-dim)", marginTop: "4px" }}>
                         Lost Volume: {(o.qty || o.quantity || 0).toLocaleString()} L ({o.fuelCode || o.fuelType}) • Value: ₹{Math.round(o.total || computeTotal(o.fuelCode, o.qty).total).toLocaleString("en-IN")}
                       </div>
                     </div>
@@ -837,7 +945,7 @@ export default function Reports() {
         <section className="panel table-panel">
           <div className="panel-head">
             <h3>👑 Enterprise Customer Master Report</h3>
-            <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>
+            <span style={{ fontSize: "14px", color: "var(--text-dim)" }}>
               Showing {customerReportData.length} active registered accounts & volume history
             </span>
           </div>
@@ -845,37 +953,37 @@ export default function Reports() {
           <table>
             <thead>
               <tr>
-                <th>Customer / Company</th>
-                <th>Contact Person</th>
-                <th>Email & Phone</th>
-                <th>City</th>
-                <th>Total Orders</th>
-                <th>Total Volume (L)</th>
-                <th>Total Spend (INR)</th>
-                <th>Account Status</th>
+                <th scope="col">Customer / Company</th>
+                <th scope="col">Contact Person</th>
+                <th scope="col">Email & Phone</th>
+                <th scope="col">City</th>
+                <th scope="col">Total Orders</th>
+                <th scope="col">Total Volume (L)</th>
+                <th scope="col">Total Spend (INR)</th>
+                <th scope="col">Account Status</th>
               </tr>
             </thead>
             <tbody>
-              {customerReportData.map((c) => (
+              {paginatedCustomerReport.map((c) => (
                 <tr key={c.id || c.customer}>
                   <td>
-                    <strong style={{ color: "var(--text)", fontSize: "13px" }}>{c.customer}</strong>
+                    <strong style={{ color: "var(--text)", fontSize: "15px" }}>{c.customer}</strong>
                   </td>
                   <td>{c.contactPerson}</td>
                   <td>
-                    <div style={{ fontSize: "12px" }}>{c.email}</div>
-                    <small style={{ color: "var(--text-dim)" }}>{c.phone}</small>
+                    <div style={{ fontSize: "14px" }}>{c.email}</div>
+                    <small style={{ color: "var(--text-dim)", fontSize: "13px" }}>{c.phone}</small>
                   </td>
                   <td>{c.city}</td>
                   <td className="mono" style={{ fontWeight: "700" }}>{c.ordersCount}</td>
-                  <td className="mono" style={{ fontWeight: "700", color: "var(--orange)" }}>
+                  <td className="mono" style={{ fontWeight: "700", color: "var(--fuel-diesel, #F59E0B)" }}>
                     {(c.totalLitres || 0).toLocaleString()} L
                   </td>
-                  <td className="mono" style={{ fontWeight: "700", color: "var(--green-neon)" }}>
+                  <td className="mono" style={{ fontWeight: "700", color: "var(--status-success, #22C55E)" }}>
                     ₹{Math.round(c.totalRevenue || 0).toLocaleString("en-IN")}
                   </td>
                   <td>
-                    <span className={`pill ${c.status === "Active" || c.status === "Approved" ? "status-approved" : "status-pending"}`} style={{ fontSize: "11px" }}>
+                    <span className={`pill ${c.status === "Active" || c.status === "Approved" ? "status-approved" : "status-pending"}`} style={{ fontSize: "12.5px" }}>
                       {c.status}
                     </span>
                   </td>
@@ -883,6 +991,14 @@ export default function Reports() {
               ))}
             </tbody>
           </table>
+          <Pagination
+            currentPage={clampedCustPage}
+            totalPages={customerPages}
+            totalRecords={customerReportData.length}
+            pageSize={tablePageSize}
+            onPageChange={setTablePage}
+            onPageSizeChange={setTablePageSize}
+          />
         </section>
       )}
 
@@ -893,7 +1009,7 @@ export default function Reports() {
         <section className="panel table-panel">
           <div className="panel-head">
             <h3>📋 Master Order Transactions Report</h3>
-            <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>
+            <span style={{ fontSize: "14px", color: "var(--text-dim)" }}>
               Showing {orderReportData.length} recorded fuel order transactions
             </span>
           </div>
@@ -901,31 +1017,29 @@ export default function Reports() {
           <table>
             <thead>
               <tr>
-                <th>Order #</th>
-                <th>Customer</th>
-                <th>Fuel</th>
-                <th>Quantity</th>
-                <th>Total Amount</th>
-                <th>City</th>
-                <th>Status</th>
-                <th>Driver</th>
-                <th>Order Date</th>
+                <th scope="col">Order #</th>
+                <th scope="col">Customer</th>
+                <th scope="col">Fuel</th>
+                <th scope="col">Quantity</th>
+                <th scope="col">Total Amount</th>
+                <th scope="col">City</th>
+                <th scope="col">Status</th>
+                <th scope="col">Driver</th>
+                <th scope="col">Order Date</th>
               </tr>
             </thead>
             <tbody>
-              {orderReportData.map((o) => (
+              {paginatedOrderReport.map((o) => (
                 <tr key={o.id || o.orderNumber}>
-                  <td className="mono" style={{ fontWeight: "700", color: "var(--orange)" }}>
+                  <td className="mono" style={{ fontWeight: "700", color: "var(--fuel-diesel, #F59E0B)" }}>
                     #{o.orderNumber}
                   </td>
-                  <td><strong>{o.customer}</strong></td>
+                  <td><strong style={{ fontSize: "15px" }}>{o.customer}</strong></td>
                   <td>
-                    <span className={`fuel-tag fuel-${(o.fuelType || "DSL").toLowerCase()}`}>
-                      {o.fuelType}
-                    </span>
+                    <FuelBadge fuelType={o.fuelType} />
                   </td>
                   <td className="mono">{(o.quantity || 0).toLocaleString()} L</td>
-                  <td className="mono" style={{ fontWeight: "700", color: "var(--green-neon)" }}>
+                  <td className="mono" style={{ fontWeight: "700", color: "var(--status-success, #22C55E)" }}>
                     ₹{Math.round(o.total || 0).toLocaleString("en-IN")}
                   </td>
                   <td>{o.city}</td>
@@ -938,17 +1052,25 @@ export default function Reports() {
                           ? "critical"
                           : "warning"
                       }`}
-                      style={{ fontSize: "10px" }}
+                      style={{ fontSize: "12.5px" }}
                     >
                       {o.status}
                     </span>
                   </td>
                   <td>{o.driver || "Unassigned"}</td>
-                  <td style={{ fontSize: "12px", color: "var(--text-dim)" }}>{o.createdAt}</td>
+                  <td style={{ fontSize: "14px", color: "var(--text-dim)" }}>{o.createdAt}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <Pagination
+            currentPage={clampedOrderPage}
+            totalPages={orderPages}
+            totalRecords={orderReportData.length}
+            pageSize={tablePageSize}
+            onPageChange={setTablePage}
+            onPageSizeChange={setTablePageSize}
+          />
         </section>
       )}
 
@@ -959,7 +1081,7 @@ export default function Reports() {
         <section className="panel table-panel">
           <div className="panel-head">
             <h3>🚚 Fleet Logistics & Delivery Audit Report</h3>
-            <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>
+            <span style={{ fontSize: "14px", color: "var(--text-dim)" }}>
               Showing {deliveryReportData.length} delivery runs & driver assignments
             </span>
           </div>
@@ -967,49 +1089,62 @@ export default function Reports() {
           <table>
             <thead>
               <tr>
-                <th>Order #</th>
-                <th>Customer</th>
-                <th>Assigned Driver</th>
-                <th>Tanker Vehicle</th>
-                <th>Destination Site</th>
-                <th>Quantity</th>
-                <th>Status</th>
-                <th>Delivery State</th>
+                <th scope="col">Order #</th>
+                <th scope="col">Customer</th>
+                <th scope="col">Assigned Driver</th>
+                <th scope="col">Tanker Vehicle</th>
+                <th scope="col">Destination Site</th>
+                <th scope="col">Fuel & Quantity</th>
+                <th scope="col">Status</th>
+                <th scope="col">Delivery State</th>
               </tr>
             </thead>
             <tbody>
-              {deliveryReportData.map((d) => (
+              {paginatedDeliveryReport.map((d) => (
                 <tr key={d.id || d.orderNumber}>
-                  <td className="mono" style={{ fontWeight: "700", color: "var(--orange)" }}>
+                  <td className="mono" style={{ fontWeight: "700", color: "var(--fuel-diesel, #F59E0B)" }}>
                     #{d.orderNumber}
                   </td>
-                  <td><strong>{d.customer}</strong></td>
+                  <td><strong style={{ fontSize: "15px" }}>{d.customer}</strong></td>
                   <td>
-                    <div style={{ fontWeight: "600" }}>{d.driver}</div>
+                    <div style={{ fontWeight: "600", fontSize: "14px" }}>{d.driver}</div>
                   </td>
-                  <td className="mono" style={{ fontSize: "12px" }}>{d.vehicle}</td>
-                  <td style={{ fontSize: "12px" }}>
+                  <td className="mono" style={{ fontSize: "14px" }}>{d.vehicle}</td>
+                  <td style={{ fontSize: "14px" }}>
                     <MapPin size={12} style={{ display: "inline", marginRight: "4px", color: "var(--text-dim)" }} />
                     {d.destination}, {d.city}
                   </td>
-                  <td className="mono">{(d.quantity || 0).toLocaleString()} L ({d.fuelType})</td>
+                  <td className="mono">
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <FuelBadge fuelType={d.fuelType} />
+                      <span>{(d.quantity || 0).toLocaleString()} L</span>
+                    </div>
+                  </td>
                   <td>
                     <span
                       className={`status-indicator-pill ${
                         d.status === "Delivered" ? "optimal" : "warning"
                       }`}
-                      style={{ fontSize: "10px" }}
+                      style={{ fontSize: "12.5px" }}
                     >
                       {d.status}
                     </span>
                   </td>
-                  <td style={{ fontSize: "12px", fontWeight: "600", color: d.status === "Delivered" ? "var(--green-neon)" : "var(--amber)" }}>
+                  <td style={{ fontSize: "14px", fontWeight: "600", color: d.status === "Delivered" ? "var(--status-success, #22C55E)" : "var(--status-warning, #F59E0B)" }}>
                     {d.completedDate}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <Pagination
+            currentPage={clampedDelivPage}
+            totalPages={deliveryPages}
+            totalRecords={deliveryReportData.length}
+            pageSize={tablePageSize}
+            onPageChange={setTablePage}
+            onPageSizeChange={setTablePageSize}
+          />
         </section>
       )}
 
@@ -1020,7 +1155,7 @@ export default function Reports() {
         <section className="panel table-panel">
           <div className="panel-head">
             <h3>⛽ Depot Fuel Inventory & Vault Telemetry Report</h3>
-            <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>
+            <span style={{ fontSize: "14px", color: "var(--text-dim)" }}>
               Showing {fuelInventoryReportData.length} bulk storage tanks & telemetry calibration
             </span>
           </div>
@@ -1028,28 +1163,26 @@ export default function Reports() {
           <table>
             <thead>
               <tr>
-                <th>Tank ID</th>
-                <th>Vault Storage Name</th>
-                <th>Fuel Code</th>
-                <th>Current Stock</th>
-                <th>Total Capacity</th>
-                <th>Fill Level</th>
-                <th>Safety Threshold</th>
-                <th>Temperature</th>
-                <th>Status</th>
+                <th scope="col">Tank ID</th>
+                <th scope="col">Vault Storage Name</th>
+                <th scope="col">Fuel Type</th>
+                <th scope="col">Current Stock</th>
+                <th scope="col">Total Capacity</th>
+                <th scope="col">Fill Level</th>
+                <th scope="col">Safety Threshold</th>
+                <th scope="col">Temperature</th>
+                <th scope="col">Status</th>
               </tr>
             </thead>
             <tbody>
-              {fuelInventoryReportData.map((t) => (
+              {paginatedInventoryReport.map((t) => (
                 <tr key={t.id || t.tankId}>
-                  <td className="mono" style={{ fontWeight: "700", color: "var(--blue)" }}>
+                  <td className="mono" style={{ fontWeight: "700", color: "var(--fuel-electric, #3B82F6)" }}>
                     {t.tankId}
                   </td>
-                  <td><strong>{t.name}</strong></td>
+                  <td><strong style={{ fontSize: "15px" }}>{t.name}</strong></td>
                   <td>
-                    <span className={`fuel-tag fuel-${(t.fuelType || "DSL").toLowerCase()}`}>
-                      {t.fuelType}
-                    </span>
+                    <FuelBadge fuelType={t.fuelType} />
                   </td>
                   <td className="mono" style={{ fontWeight: "700" }}>
                     {(t.currentStock || 0).toLocaleString()} L
@@ -1058,17 +1191,17 @@ export default function Reports() {
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <div style={{ width: "60px", height: "6px", background: "var(--panel-alt)", borderRadius: "3px", overflow: "hidden" }}>
-                        <div style={{ width: `${t.fillPercentage}%`, height: "100%", background: t.fillPercentage <= 30 ? "var(--red)" : "var(--green-neon)" }} />
+                        <div style={{ width: `${t.fillPercentage}%`, height: "100%", background: t.fillPercentage <= 30 ? "var(--status-danger, #EF4444)" : "var(--status-success, #22C55E)" }} />
                       </div>
-                      <span style={{ fontSize: "12px", fontWeight: "700" }}>{t.fillPercentage}%</span>
+                      <span style={{ fontSize: "14px", fontWeight: "700" }}>{t.fillPercentage}%</span>
                     </div>
                   </td>
-                  <td className="mono" style={{ fontSize: "12px", color: "var(--text-dim)" }}>
+                  <td className="mono" style={{ fontSize: "14px", color: "var(--text-dim)" }}>
                     {(t.threshold || 5000).toLocaleString()} L
                   </td>
-                  <td style={{ fontSize: "12px" }}>{t.temp || 24.5} °C</td>
+                  <td style={{ fontSize: "14px" }}>{t.temp || 24.5} °C</td>
                   <td>
-                    <span className={`pill ${t.fillPercentage <= 30 ? "status-cancelled" : "status-approved"}`} style={{ fontSize: "11px" }}>
+                    <span className={`pill ${t.fillPercentage <= 30 ? "status-cancelled" : "status-approved"}`} style={{ fontSize: "12.5px" }}>
                       {t.status}
                     </span>
                   </td>
@@ -1076,6 +1209,14 @@ export default function Reports() {
               ))}
             </tbody>
           </table>
+          <Pagination
+            currentPage={clampedInvPage}
+            totalPages={inventoryPages}
+            totalRecords={fuelInventoryReportData.length}
+            pageSize={tablePageSize}
+            onPageChange={setTablePage}
+            onPageSizeChange={setTablePageSize}
+          />
         </section>
       )}
     </div>

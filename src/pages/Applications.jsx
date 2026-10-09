@@ -18,19 +18,32 @@ import {
   ShieldCheck,
   UserCheck,
   RefreshCw,
+  Lock,
 } from "lucide-react";
 import { registrationApi, getBackendBaseUrl } from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { ROLES, can } from "../utils/permissions";
+import Pagination from "../components/Pagination";
+import EmptyState from "../components/EmptyState";
+import CountUp from "../components/CountUp";
 
 export default function Applications() {
   const { state: authState } = useAuth();
   const currentUser = authState?.user;
+  const userRole = currentUser?.role || "";
+  const canApprove = can(userRole, "applications.approve");
 
   const [registrations, setRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("Pending"); // "Pending" | "Approved" | "Rejected"
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [selectedApp, setSelectedApp] = useState(null);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, search]);
 
   // Document Preview Modal state
   const [previewDoc, setPreviewDoc] = useState(null);
@@ -92,6 +105,10 @@ export default function Applications() {
       return matchesTab && matchesSearch;
     });
   }, [registrations, activeTab, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredApplications.length / pageSize));
+  const clampedPage = Math.min(page, totalPages);
+  const paginatedApplications = filteredApplications.slice((clampedPage - 1) * pageSize, clampedPage * pageSize);
 
   // Counts for tabs
   const counts = useMemo(() => {
@@ -318,10 +335,31 @@ export default function Applications() {
       {/* Page Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
         <div>
-          <h1 style={{ fontSize: "24px", fontWeight: "800", margin: 0, color: "var(--text)" }}>
-            Applications / Customer Approvals
-          </h1>
-          <p style={{ margin: "4px 0 0", fontSize: "13px", color: "var(--text-dim)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <h1 style={{ fontSize: "28px", fontWeight: "800", margin: 0, color: "var(--text)" }}>
+              Applications / Customer Approvals
+            </h1>
+            {!canApprove && (
+              <span
+                style={{
+                  fontSize: "12.5px",
+                  padding: "3px 8px",
+                  borderRadius: "6px",
+                  background: "rgba(249, 115, 22, 0.15)",
+                  border: "1px solid rgba(249, 115, 22, 0.3)",
+                  color: "var(--orange)",
+                  fontWeight: "700",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <Lock size={13} />
+                VIEW-ONLY (Admin Approvals Required)
+              </span>
+            )}
+          </div>
+          <p style={{ margin: "4px 0 0", fontSize: "14.5px", color: "var(--text-dim)" }}>
             Review customer registration requests, verify legal dossier documents, and approve or reject corporate accounts.
           </p>
         </div>
@@ -396,6 +434,7 @@ export default function Applications() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by Company Name, Authorized Person, Email, Mobile, GSTIN, PAN..."
+            aria-label="Search applications by Company Name, Authorized Person, Email, Mobile, GSTIN, or PAN"
             style={{ width: "100%" }}
           />
         </div>
@@ -428,13 +467,13 @@ export default function Applications() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Company Name</th>
-              <th>Authorized Person</th>
-              <th>Email</th>
-              <th>Mobile</th>
-              <th>Submission Date</th>
-              <th>Current Status</th>
-              <th style={{ textAlign: "right" }}>Actions</th>
+              <th scope="col">Company Name</th>
+              <th scope="col">Authorized Person</th>
+              <th scope="col">Email</th>
+              <th scope="col">Mobile</th>
+              <th scope="col">Submission Date</th>
+              <th scope="col">Current Status</th>
+              <th scope="col" style={{ textAlign: "right" }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -451,7 +490,7 @@ export default function Applications() {
                 </td>
               </tr>
             ) : (
-              filteredApplications.map((app) => {
+              paginatedApplications.map((app) => {
                 const appId = app._id || app.id;
                 const status = app.status || "Pending";
                 const isPending = status === "Pending" || status === "Pending Review";
@@ -470,23 +509,23 @@ export default function Applications() {
                 return (
                   <tr key={appId}>
                     <td>
-                      <strong style={{ color: "var(--text)", display: "block" }}>{app.companyName}</strong>
-                      <small style={{ color: "var(--text-dim)", fontSize: "11px" }}>
+                      <strong style={{ color: "var(--text)", display: "block", fontSize: "14.5px" }}>{app.companyName}</strong>
+                      <small style={{ color: "var(--text-dim)", fontSize: "12.5px" }}>
                         ID: {app.regId || appId} • {app.city || "Chennai"}
                       </small>
                     </td>
 
                     <td>
-                      <div style={{ fontWeight: "600" }}>
+                      <div style={{ fontWeight: "600", fontSize: "14px" }}>
                         {app.authorizedPerson || app.contactPerson || "Authorized Rep"}
                       </div>
-                      <small style={{ color: "var(--text-dim)" }}>
+                      <small style={{ color: "var(--text-dim)", fontSize: "13px" }}>
                         GST: {app.gstNumber || "—"}
                       </small>
                     </td>
 
                     <td>
-                      <span style={{ color: "var(--text-dim)", fontSize: "13px" }}>{app.email || "—"}</span>
+                      <span style={{ color: "var(--text-dim)", fontSize: "13.5px" }}>{app.email || "—"}</span>
                     </td>
 
                     <td>
@@ -530,29 +569,35 @@ export default function Applications() {
 
                         {/* Direct Quick Action Buttons for Pending items */}
                         {isPending && (
-                          <>
-                            <button
-                              className="btn-ghost-sm"
-                              onClick={() => handleApprove(appId)}
-                              style={{ color: "var(--green-neon)" }}
-                              title="Approve Application"
-                              disabled={actionLoading}
-                            >
-                              <Check size={14} /> Approve
-                            </button>
-                            <button
-                              className="btn-ghost-sm"
-                              onClick={() => {
-                                setRejectDialogApp(app);
-                                setRejectionReason("");
-                              }}
-                              style={{ color: "var(--red)" }}
-                              title="Reject Application"
-                              disabled={actionLoading}
-                            >
-                              <X size={14} /> Reject
-                            </button>
-                          </>
+                          canApprove ? (
+                            <>
+                              <button
+                                className="btn-ghost-sm"
+                                onClick={() => handleApprove(appId)}
+                                style={{ color: "var(--green-neon)" }}
+                                title="Approve Application"
+                                disabled={actionLoading}
+                              >
+                                <Check size={14} /> Approve
+                              </button>
+                              <button
+                                className="btn-ghost-sm"
+                                onClick={() => {
+                                  setRejectDialogApp(app);
+                                  setRejectionReason("");
+                                }}
+                                style={{ color: "var(--red)" }}
+                                title="Reject Application"
+                                disabled={actionLoading}
+                              >
+                                <X size={14} /> Reject
+                              </button>
+                            </>
+                          ) : (
+                            <span style={{ fontSize: "12.5px", color: "var(--text-dim)", fontStyle: "italic", padding: "0 6px" }}>
+                              View Only
+                            </span>
+                          )
                         )}
                       </div>
                     </td>
@@ -562,6 +607,16 @@ export default function Applications() {
             )}
           </tbody>
         </table>
+
+        <Pagination
+          currentPage={clampedPage}
+          totalPages={totalPages}
+          totalRecords={filteredApplications.length}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          pageSizeOptions={[10, 20, 50]}
+        />
       </div>
 
       {/* =========================================================================
@@ -592,10 +647,10 @@ export default function Applications() {
                   <Building2 size={20} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "18px" }}>
+                  <h3 style={{ margin: 0, fontSize: "20px" }}>
                     Application Dossier: {selectedApp.companyName}
                   </h3>
-                  <p className="cell-dim" style={{ margin: "2px 0 0", fontSize: "12px" }}>
+                  <p className="cell-dim" style={{ margin: "2px 0 0", fontSize: "13px" }}>
                     Application ID: {selectedApp.regId || selectedApp._id} • Status:{" "}
                     <strong
                       style={{
@@ -636,8 +691,8 @@ export default function Applications() {
                 >
                   <CheckCircle2 size={18} />
                   <div>
-                    <strong>Approved Corporate Account</strong>
-                    <div style={{ color: "var(--text-dim)", fontSize: "11px" }}>
+                    <strong style={{ fontSize: "14.5px" }}>Approved Corporate Account</strong>
+                    <div style={{ color: "var(--text-dim)", fontSize: "12.5px" }}>
                       Approved by {selectedApp.approvedBy || "Admin"} on{" "}
                       {selectedApp.approvedAt
                         ? new Date(selectedApp.approvedAt).toLocaleString()
@@ -658,18 +713,18 @@ export default function Applications() {
                     alignItems: "flex-start",
                     gap: "10px",
                     color: "var(--red)",
-                    fontSize: "13px",
+                    fontSize: "13.5px",
                   }}
                 >
                   <XCircle size={18} style={{ flexShrink: 0, marginTop: "2px" }} />
                   <div>
-                    <strong>Application Rejected</strong>
+                    <strong style={{ fontSize: "14.5px" }}>Application Rejected</strong>
                     <div style={{ marginTop: "4px" }}>
                       <strong>Reason: </strong>
                       {selectedApp.rejectionReason || selectedApp.reviewNotes || "Not specified."}
                     </div>
                     {selectedApp.rejectedAt && (
-                      <div style={{ color: "var(--text-dim)", fontSize: "11px", marginTop: "2px" }}>
+                      <div style={{ color: "var(--text-dim)", fontSize: "12.5px", marginTop: "2px" }}>
                         Rejected on {new Date(selectedApp.rejectedAt).toLocaleString()}
                       </div>
                     )}
@@ -690,34 +745,34 @@ export default function Applications() {
                 }}
               >
                 <div>
-                  <span style={{ color: "var(--text-dim)", fontSize: "11px", fontWeight: "700" }}>
+                  <span style={{ color: "var(--text-dim)", fontSize: "12.5px", fontWeight: "700" }}>
                     AUTHORIZED PERSON & CONTACT
                   </span>
-                  <div style={{ fontWeight: "700", marginTop: "4px", fontSize: "14px" }}>
+                  <div style={{ fontWeight: "700", marginTop: "4px", fontSize: "14.5px" }}>
                     {selectedApp.authorizedPerson || selectedApp.contactPerson || "Authorized Rep"}
                   </div>
-                  <div style={{ fontSize: "12px", color: "var(--orange)", marginTop: "4px" }}>
+                  <div style={{ fontSize: "13.5px", color: "var(--orange)", marginTop: "4px" }}>
                     📞 {selectedApp.mobile || selectedApp.phone}
                   </div>
-                  <div style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "2px" }}>
+                  <div style={{ fontSize: "13.5px", color: "var(--text-dim)", marginTop: "2px" }}>
                     ✉️ {selectedApp.email}
                   </div>
                 </div>
 
                 <div>
-                  <span style={{ color: "var(--text-dim)", fontSize: "11px", fontWeight: "700" }}>
+                  <span style={{ color: "var(--text-dim)", fontSize: "12.5px", fontWeight: "700" }}>
                     LEGAL TAX IDENTIFIERS
                   </span>
-                  <div style={{ marginTop: "4px", fontSize: "13px" }}>
+                  <div style={{ marginTop: "4px", fontSize: "14px" }}>
                     <strong>GSTIN: </strong>
                     <code style={{ color: "var(--orange)" }}>{selectedApp.gstNumber}</code>
                   </div>
-                  <div style={{ marginTop: "4px", fontSize: "13px" }}>
+                  <div style={{ marginTop: "4px", fontSize: "14px" }}>
                     <strong>PAN: </strong>
                     <code>{selectedApp.panNumber}</code>
                   </div>
                   {selectedApp.companyRegNo && (
-                    <div style={{ marginTop: "4px", fontSize: "13px" }}>
+                    <div style={{ marginTop: "4px", fontSize: "14px" }}>
                       <strong>Reg No: </strong>
                       <span>{selectedApp.companyRegNo}</span>
                     </div>
@@ -725,10 +780,10 @@ export default function Applications() {
                 </div>
 
                 <div style={{ gridColumn: "span 2", borderTop: "1px dashed var(--line)", paddingTop: "10px" }}>
-                  <span style={{ color: "var(--text-dim)", fontSize: "11px", fontWeight: "700" }}>
+                  <span style={{ color: "var(--text-dim)", fontSize: "12.5px", fontWeight: "700" }}>
                     REGISTERED SITE ADDRESS
                   </span>
-                  <div style={{ fontSize: "13px", marginTop: "4px" }}>
+                  <div style={{ fontSize: "14px", marginTop: "4px" }}>
                     {selectedApp.address || selectedApp.address1}, {selectedApp.city},{" "}
                     {selectedApp.state} - {selectedApp.pincode || selectedApp.postalCode}
                   </div>
@@ -778,10 +833,10 @@ export default function Applications() {
                             <FileText size={18} />
                           </div>
                           <div>
-                            <strong style={{ fontSize: "13px", display: "block", color: "var(--text)" }}>
+                            <strong style={{ fontSize: "14px", display: "block", color: "var(--text)" }}>
                               {doc.title}
                             </strong>
-                            <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>
+                            <span style={{ fontSize: "12.5px", color: "var(--text-dim)" }}>
                               {doc.fileName || "File.pdf"}
                             </span>
                           </div>
@@ -847,31 +902,38 @@ export default function Applications() {
                 Close Dossier
               </button>
 
-              <div style={{ display: "flex", gap: "10px" }}>
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                 {(selectedApp.status === "Pending" ||
                   selectedApp.status === "Pending Review") && (
-                  <>
-                    <button
-                      className="btn-secondary"
-                      onClick={() => {
-                        setRejectDialogApp(selectedApp);
-                        setRejectionReason("");
-                      }}
-                      style={{ color: "var(--red)", borderColor: "var(--red)" }}
-                      disabled={actionLoading}
-                    >
-                      <X size={15} /> Reject Application
-                    </button>
+                  canApprove ? (
+                    <>
+                      <button
+                        className="btn-secondary"
+                        onClick={() => {
+                          setRejectDialogApp(selectedApp);
+                          setRejectionReason("");
+                        }}
+                        style={{ color: "var(--red)", borderColor: "var(--red)" }}
+                        disabled={actionLoading}
+                      >
+                        <X size={15} /> Reject Application
+                      </button>
 
-                    <button
-                      className="btn-primary"
-                      onClick={() => handleApprove(selectedApp._id || selectedApp.id)}
-                      disabled={actionLoading}
-                      style={{ background: "var(--green-neon)", borderColor: "var(--green-neon)", color: "#000", fontWeight: "800" }}
-                    >
-                      <Check size={15} /> Approve & Activate Account
-                    </button>
-                  </>
+                      <button
+                        className="btn-primary"
+                        onClick={() => handleApprove(selectedApp._id || selectedApp.id)}
+                        disabled={actionLoading}
+                        style={{ background: "var(--green-neon)", borderColor: "var(--green-neon)", color: "#000", fontWeight: "800" }}
+                      >
+                        <Check size={15} /> Approve & Activate Account
+                      </button>
+                    </>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--orange)", fontSize: "13px", fontWeight: "600" }}>
+                      <Lock size={15} />
+                      Approval reserved for Platform Admin
+                    </div>
+                  )
                 )}
               </div>
             </div>
@@ -891,8 +953,8 @@ export default function Applications() {
           >
             <div className="modal-head">
               <div>
-                <h3 style={{ margin: 0 }}>Document Preview: {previewDoc.title}</h3>
-                <small style={{ color: "var(--text-dim)" }}>{previewDoc.fileName}</small>
+                <h3 style={{ margin: 0, fontSize: "20px" }}>Document Preview: {previewDoc.title}</h3>
+                <small style={{ color: "var(--text-dim)", fontSize: "13px" }}>{previewDoc.fileName}</small>
               </div>
               <button className="icon-btn" onClick={() => setPreviewDoc(null)}>
                 <X size={18} />
@@ -957,8 +1019,8 @@ export default function Applications() {
           >
             <div className="modal-head">
               <div>
-                <h3 style={{ margin: 0, color: "var(--red)" }}>Reject Customer Application</h3>
-                <small style={{ color: "var(--text-dim)" }}>{rejectDialogApp.companyName}</small>
+                <h3 style={{ margin: 0, color: "var(--red)", fontSize: "20px" }}>Reject Customer Application</h3>
+                <small style={{ color: "var(--text-dim)", fontSize: "13px" }}>{rejectDialogApp.companyName}</small>
               </div>
               <button className="icon-btn" onClick={() => setRejectDialogApp(null)}>
                 <X size={18} />
@@ -967,7 +1029,7 @@ export default function Applications() {
 
             <form onSubmit={handleRejectSubmit}>
               <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-                <p style={{ fontSize: "13px", color: "var(--text)", margin: 0 }}>
+                <p style={{ fontSize: "14px", color: "var(--text)", margin: 0 }}>
                   Please specify the reason for rejecting this registration request. The customer will be informed upon login.
                 </p>
 

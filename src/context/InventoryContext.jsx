@@ -12,6 +12,12 @@ export function InventoryProvider({ children }) {
 
   // Load live inventory from backend API
   const fetchTanks = useCallback(async () => {
+    const token = localStorage.getItem("fdms-token") || localStorage.getItem("token");
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await inventoryApi.getInventory();
